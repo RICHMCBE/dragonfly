@@ -125,26 +125,33 @@ func (l *Loader) Load(tx *Tx, n int) {
 // to load, it is queued to be loaded again.
 func (l *Loader) viewChunk(tx *Tx, pos ChunkPos, c *Column) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 
 	if l.closed || l.viewer == nil || l.w == nil || l.w != tx.World() {
+		l.mu.Unlock()
 		return
 	}
 	delete(l.pending, pos)
 	if c == nil {
 		l.queueLoad(pos)
+		l.mu.Unlock()
 		return
 	}
 	if _, ok := l.loaded[pos]; ok {
+		l.mu.Unlock()
 		return
 	}
 	if !l.withinLoadRadius(pos) {
+		l.mu.Unlock()
 		return
 	}
-	l.viewer.ViewChunk(pos, l.w.Dimension(), c.BlockEntities, c.Chunk)
-	l.w.addViewer(tx, c, l)
-
+	// Publish state before callbacks. Showing entities may read neighbouring
+	// chunks, synchronously completing another pending viewChunk on this owner.
+	// Holding mu across those callbacks would deadlock the world's transaction.
+	w, viewer := l.w, l.viewer
 	l.loaded[pos] = c
+	l.mu.Unlock()
+	viewer.ViewChunk(pos, w.Dimension(), c.BlockEntities, c.Chunk)
+	w.addViewer(tx, c, l)
 }
 
 // Chunk attempts to return a chunk at the given ChunkPos. If the chunk is not loaded, the second return value will
