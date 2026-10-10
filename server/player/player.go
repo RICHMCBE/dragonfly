@@ -41,6 +41,7 @@ import (
 )
 
 type playerData struct {
+	allowFlight       bool
 	xuid              string
 	locale            language.Tag
 	nameTag, scoreTag string
@@ -205,6 +206,12 @@ func (p *Player) SetSkin(skin skin.Skin) {
 		return
 	}
 	p.skin = skin
+	// Optional post-accept notification for consumers that must never export
+	// a cancelled proposal (for example the server's public skin images).
+	if h, ok := p.Handler().(interface{ HandleSkinChanged(*Player) }); ok {
+		h.HandleSkinChanged(p)
+	}
+	p.session().UpdateListSkin(skin)
 	for _, v := range p.viewers() {
 		v.ViewSkin(p)
 	}
@@ -301,6 +308,11 @@ func (p *Player) SendTitle(t title.Title) {
 // SendScoreboard may be called at any time to change the scoreboard of the player.
 func (p *Player) SendScoreboard(scoreboard *scoreboard.Scoreboard) {
 	p.session().SendScoreboard(scoreboard)
+}
+
+// SendHealthHUD updates persistent reserved health rows without using titles.
+func (p *Player) SendHealthHUD(bar, text string) {
+	p.session().SendHealthHUD(bar, text)
 }
 
 // RemoveScoreboard removes any scoreboard currently present on the screen of the player. Nothing happens if
@@ -526,14 +538,38 @@ func (p *Player) MaxHealth() float64 {
 // SetMaxHealth panics if the max health passed is 0 or lower.
 func (p *Player) SetMaxHealth(health float64) {
 	p.health.SetMaxHealth(health)
-	p.session().SendHealth(p.Health(), p.MaxHealth(), p.absorptionHealth)
+	p.sendHealth()
+}
+
+// SetMaxHealthPreservingRatio changes the maximum without healing or hurting
+// the player relative to their existing health percentage.
+func (p *Player) SetMaxHealthPreservingRatio(health float64) {
+	ratio := p.Health() / p.MaxHealth()
+	p.health.SetMaxHealth(health)
+	p.addHealth(health*ratio - p.Health())
 }
 
 // addHealth adds health to the player's current health.
 func (p *Player) addHealth(health float64) {
 	p.health.AddHealth(health)
-	p.session().SendHealth(p.Health(), p.MaxHealth(), p.absorptionHealth)
+	p.sendHealth()
 }
+
+// Optional display mapping never changes the actual server health or persisted
+// player state. Handlers without the hook keep vanilla packet attributes.
+func (p *Player) sendHealth() {
+	health, maximum := p.Health(), p.MaxHealth()
+	if h, ok := p.Handler().(interface {
+		HandleHealthDisplay(*Player, *float64, *float64)
+	}); ok {
+		h.HandleHealthDisplay(p, &health, &maximum)
+		p.session().SendHealthDisplay(health, maximum, p.absorptionHealth)
+		return
+	}
+	p.session().SendHealth(health, maximum, p.absorptionHealth)
+}
+
+func (p *Player) RefreshHealthDisplay() { p.sendHealth() }
 
 // Heal heals the entity for a given amount of health. The source passed
 // represents the cause of the healing, for example entity.FoodHealingSource if
@@ -748,7 +784,7 @@ func (p *Player) Explode(src world.ExplosionSource, impact float64) {
 // Nothing happens if a negative number is passed.
 func (p *Player) SetAbsorption(health float64) {
 	p.absorptionHealth = max(health, 0)
-	p.session().SendHealth(p.Health(), p.MaxHealth(), p.absorptionHealth)
+	p.sendHealth()
 }
 
 // Absorption returns the absorption health that the player has.
@@ -953,7 +989,17 @@ func (p *Player) dropItems() {
 	p.session().SendExperience(p.ExperienceLevel(), p.ExperienceProgress())
 
 	p.MoveItemsToInventory()
-	for _, it := range append(p.inv.Clear(), append(p.armour.Clear(), p.offHand.Clear()...)...) {
+	var dropped []item.Stack
+	for _, inv := range []*inventory.Inventory{p.inv, p.armour.Inventory(), p.offHand} {
+		for slot, it := range inv.Slots() {
+			if it.Empty() || p.keepDeathItem(it) {
+				continue
+			}
+			dropped = append(dropped, it)
+			_ = inv.SetItem(slot, item.Stack{})
+		}
+	}
+	for _, it := range dropped {
 		if _, ok := it.Enchantment(enchantment.CurseOfVanishing); ok {
 			continue
 		}
@@ -966,6 +1012,9 @@ func (p *Player) dropItems() {
 // crafting grid of slots in an enchantment table, to the player's inventory.
 // If no space is left for these items, the leftover items are dropped.
 func (p *Player) MoveItemsToInventory() {
+	if h, ok := p.Handler().(interface{ HandleMoveItemsToInventory(*Player) bool }); ok && h.HandleMoveItemsToInventory(p) {
+		return
+	}
 	for _, i := range p.ui.Clear() {
 		if n, err := p.inv.AddItem(i); err != nil {
 			// We couldn't add the item to the main inventory (probably because
@@ -1247,11 +1296,23 @@ func (p *Player) StopGliding() {
 // StartFlying makes the player start flying if they aren't already. It requires the player to be in a gamemode which
 // allows flying.
 func (p *Player) StartFlying() {
-	if !p.GameMode().AllowsFlying() || p.Flying() {
+	if !p.AllowsFlight() || p.Flying() {
 		return
 	}
 	p.flying = true
 	p.session().SendGameMode(p)
+}
+
+// AllowsFlight includes temporary survival flight granted by server plugins.
+func (p *Player) AllowsFlight() bool { return p.allowFlight || p.GameMode().AllowsFlying() }
+
+// SetAllowFlight changes plugin flight permission without changing game mode.
+func (p *Player) SetAllowFlight(allow bool) {
+	p.allowFlight = allow
+	if !p.AllowsFlight() {
+		p.StopFlying()
+	}
+	p.session().SendAbilities(p)
 }
 
 // Flying checks if the player is currently flying.
@@ -1533,7 +1594,7 @@ func (p *Player) SetGameMode(mode world.GameMode) {
 		v.ViewEntityGameMode(p)
 	}
 	if mode.AllowsTakingDamage() {
-		p.session().SendHealth(p.Health(), p.MaxHealth(), p.absorptionHealth)
+		p.sendHealth()
 	}
 }
 
@@ -1910,6 +1971,14 @@ func (p *Player) AttackEntity(e world.Entity) bool {
 		dmg *= 1.5
 	}
 
+	if handler, ok := p.Handler().(interface {
+		HandleAttackDamage(*Context, world.Entity, *float64)
+	}); ok {
+		handler.HandleAttackDamage(ctx, e, &dmg)
+		if ctx.Cancelled() {
+			return false
+		}
+	}
 	n, vulnerable := living.Hurt(dmg, entity.AttackDamageSource{Attacker: p})
 	i, left := p.HeldItems()
 
@@ -2620,6 +2689,14 @@ func (p *Player) ShowEntity(e world.Entity) {
 	}
 }
 
+func (p *Player) RestoreEntityVisibility(h *world.EntityHandle) {
+	if e, ok := h.Entity(p.tx); ok {
+		p.ShowEntity(e)
+	} else if p.session() != session.Nop {
+		p.session().ForgetHiddenEntity(h)
+	}
+}
+
 // Latency returns a rolling average of latency between the sending and the receiving end of the connection of
 // the player.
 // The latency returned is updated continuously and is half the round trip time (RTT).
@@ -2633,6 +2710,9 @@ func (p *Player) Latency() time.Duration {
 
 // Tick ticks the entity, performing actions such as checking if the player is still breaking a block.
 func (p *Player) Tick(tx *world.Tx, current int64) {
+	if ticker, ok := p.h.(interface{ HandleTick(*Player, int64) }); ok {
+		ticker.HandleTick(p, current)
+	}
 	if p.Dead() {
 		return
 	}
@@ -3439,6 +3519,9 @@ func (p *Player) useContext() *item.UseContext {
 			src, dst, srcInv, dstInv := int(*p.heldSlot), i, p.inv, p.armour.Inventory()
 			srcIt, _ := srcInv.Item(src)
 			dstIt, _ := dstInv.Item(dst)
+			if !p.AllowInventoryDestination(dstInv, dst, srcIt) || !p.AllowInventoryDestination(srcInv, src, dstIt) {
+				return
+			}
 
 			ctx := event.C(inventory.Holder(p))
 			_ = call(ctx, src, srcIt, srcInv.Handler().HandleTake)
@@ -3447,6 +3530,7 @@ func (p *Player) useContext() *item.UseContext {
 			if err := call(ctx, dst, srcIt, dstInv.Handler().HandlePlace); err == nil {
 				_ = srcInv.SetItem(src, dstIt)
 				_ = dstInv.SetItem(dst, srcIt)
+				p.InventoryTransactionCommitted()
 				p.PlaySound(sound.EquipItem{Item: srcIt.Item()})
 			}
 		},
