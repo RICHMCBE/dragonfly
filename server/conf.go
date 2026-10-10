@@ -16,6 +16,7 @@ import (
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/player/chat"
 	"github.com/df-mc/dragonfly/server/player/playerdb"
+	"github.com/df-mc/dragonfly/server/session"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/biome"
 	"github.com/df-mc/dragonfly/server/world/generator"
@@ -28,6 +29,9 @@ import (
 
 // Config contains options for starting a Minecraft server.
 type Config struct {
+	PacketProcessor func() session.PacketProcessor
+	// DisableScoreboard suppresses sidebar and scoreboard health HUD packets.
+	DisableScoreboard bool
 	// Log is the Logger to use for logging information. If nil, Log is set to
 	// slog.Default(). Errors reported by the underlying network are only logged
 	// if Log has at least debug level.
@@ -43,6 +47,9 @@ type Config struct {
 	// the server, the player will then first be requested to download these
 	// resource packs.
 	Resources []*resource.Pack
+	// ResourcePackPublisher publishes all packs, including generated custom-item packs,
+	// before listeners are created and may attach HTTP download locations.
+	ResourcePackPublisher func([]*resource.Pack) []*resource.Pack
 	// ResourcesRequires specifies if the downloading of resource packs is
 	// required to join the server. If set to true, players will not be able to
 	// join without first downloading and applying the Resources above.
@@ -182,6 +189,9 @@ func (conf Config) New() *Server {
 		if pack, ok := packbuilder.BuildResourcePack(conf.Blocks); ok {
 			conf.Resources = append(conf.Resources, pack)
 		}
+	}
+	if conf.ResourcePackPublisher != nil {
+		conf.Resources = conf.ResourcePackPublisher(conf.Resources)
 	}
 	// Copy resources so that the slice can't be edited afterward.
 	conf.Resources = slices.Clone(conf.Resources)
