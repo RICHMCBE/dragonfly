@@ -67,6 +67,17 @@ func (e *Ent) SetVelocity(v mgl64.Vec3) {
 	e.data.Vel = v
 }
 
+// Move sets a plugin-controlled entity's position and rotation and broadcasts
+// ordinary movement. Collision and environment checks belong to its behaviour.
+func (e *Ent) Move(pos, vel mgl64.Vec3, rot cube.Rotation) {
+	viewers := e.tx.Viewers(e.data.Pos)
+	e.data.Pos, e.data.Vel, e.data.Rot = pos, vel, rot
+	for _, v := range viewers {
+		v.ViewEntityMovement(e, pos, rot, false)
+		v.ViewEntityVelocity(e, vel)
+	}
+}
+
 // Teleport teleports the entity to the position given.
 func (e *Ent) Teleport(pos mgl64.Vec3) {
 	viewers := e.tx.Viewers(e.data.Pos)
