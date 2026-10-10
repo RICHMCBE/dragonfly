@@ -11,6 +11,7 @@ import (
 // Scoreboard implements the io.Writer and io.StringWriter interfaces. fmt.Fprintf and fmt.Fprint may be used
 // to write formatted text to the scoreboard.
 type Scoreboard struct {
+	objective  string
 	name       string
 	lines      []string
 	padding    bool
@@ -27,6 +28,17 @@ func New(name ...any) *Scoreboard {
 
 // Name returns the display name of the scoreboard, as passed during the construction of the scoreboard.
 func (board *Scoreboard) Name() string {
+	return board.name
+}
+
+// SetObjectiveName separates the internal objective ID from its display title.
+func (board *Scoreboard) SetObjectiveName(name string) { board.objective = name }
+
+// ObjectiveName returns the internal ID, defaulting to the display name.
+func (board *Scoreboard) ObjectiveName() string {
+	if board.objective != "" {
+		return board.objective
+	}
 	return board.name
 }
 
