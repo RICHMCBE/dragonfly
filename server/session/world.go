@@ -43,11 +43,18 @@ type OffsetEntity interface {
 
 // entityHidden checks if a world.Entity is being explicitly hidden from the Session.
 func (s *Session) entityHidden(e world.Entity) bool {
+	if restricted, ok := e.(interface {
+		VisibleTo(*world.EntityHandle) bool
+	}); ok && !restricted.VisibleTo(s.ent) {
+		return true
+	}
 	s.entityMutex.RLock()
 	_, ok := s.hiddenEntities[e.H().UUID()]
 	s.entityMutex.RUnlock()
 	return ok
 }
+
+func (s *Session) EntityHidden(e world.Entity) bool { return s.entityHidden(e) }
 
 // ViewEntity ...
 func (s *Session) ViewEntity(e world.Entity) {
@@ -495,6 +502,15 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 			EventType: packet.LevelEventParticleLegacyEvent | 28,
 			Position:  vec64To32(pos),
 		})
+	case particle.Bubble, particle.WaterSplash, particle.WaterWake:
+		id := int32(1)
+		switch p.(type) {
+		case particle.WaterSplash:
+			id = 25
+		case particle.WaterWake:
+			id = 27
+		}
+		s.writePacket(&packet.LevelEvent{EventType: packet.LevelEventParticleLegacyEvent | id, Position: vec64To32(pos)})
 	case particle.LavaDrip:
 		s.writePacket(&packet.LevelEvent{
 			EventType: packet.LevelEventParticleLegacyEvent | 29,
