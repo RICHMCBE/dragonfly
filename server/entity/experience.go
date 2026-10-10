@@ -48,7 +48,9 @@ func (e *ExperienceManager) SetLevel(level int) {
 		panic(fmt.Sprintf("level must be between 0 and 2,147,483,647, got %v", level))
 	}
 	_, progress := progressFromExperience(e.total())
-	e.experience = experienceForLevels(level) + int(float64(experienceForLevel(level))*progress)
+	progressExp := float64(experienceForLevel(level)) * progress
+	e.experience = experienceForLevels(level) + int(progressExp)
+	e.dec = progressExp - math.Trunc(progressExp)
 }
 
 // Progress returns the progress towards the next level.
@@ -93,7 +95,8 @@ func progressFromExperience(experience float64) (level int, progress float64) {
 	} else if d == 0 {
 		sol = -b / (2 * a)
 	}
-	return int(sol), sol - math.Trunc(sol)
+	level = int(sol)
+	return level, (experience - float64(experienceForLevels(level))) / float64(experienceForLevel(level))
 }
 
 // experienceForLevels calculates the amount of experience needed in total to reach a certain level.
