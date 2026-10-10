@@ -65,8 +65,19 @@ func (s *Session) StartShowingEntity(e world.Entity) {
 	}
 }
 
+// ForgetHiddenEntity clears visibility state for an actor now in another world.
+// It is shown normally the next time it enters this session's viewing range.
+func (s *Session) ForgetHiddenEntity(h *world.EntityHandle) {
+	s.entityMutex.Lock()
+	delete(s.hiddenEntities, h.UUID())
+	s.entityMutex.Unlock()
+}
+
 // closeCurrentContainer closes the container the player might currently have open.
 func (s *Session) closeCurrentContainer(tx *world.Tx, clientRequested bool) {
+	if s.closeVirtualContainer(tx, clientRequested) {
+		return
+	}
 	if !s.closeWindow(clientRequested) {
 		return
 	}
@@ -308,6 +319,9 @@ func (s *Session) invByID(id int32, tx *world.Tx) (*inventory.Inventory, bool) {
 		if !s.containerOpened.Load() {
 			return nil, false
 		}
+		if s.virtualContainer != nil {
+			return s.openedWindow.Load(), id == protocol.ContainerLevelEntity && s.virtualContainer.ready
+		}
 		switch id {
 		case protocol.ContainerLevelEntity:
 			return s.openedWindow.Load(), true
@@ -520,7 +534,7 @@ func (s *Session) SendGameMode(c Controllable) {
 // SendAbilities sends the abilities of the Controllable entity of the session to the client.
 func (s *Session) SendAbilities(c Controllable) {
 	mode, abilities := c.GameMode(), uint32(0)
-	if mode.AllowsFlying() {
+	if allowsFlight(c) {
 		abilities |= protocol.AbilityMayFly
 		if c.Flying() {
 			abilities |= protocol.AbilityFlying
@@ -564,13 +578,18 @@ func (s *Session) SendAbilities(c Controllable) {
 
 // SendHealth sends the health and max health to the player.
 func (s *Session) SendHealth(health, max, absorption float64) {
+	s.SendHealthDisplay(math.Ceil(health), math.Ceil(max), absorption)
+}
+
+// SendHealthDisplay sends fractional display values without altering server HP.
+func (s *Session) SendHealthDisplay(health, max, absorption float64) {
 	s.writePacket(&packet.UpdateAttributes{
 		EntityRuntimeID: selfEntityRuntimeID,
 		Attributes: []protocol.Attribute{{
 			AttributeValue: protocol.AttributeValue{
 				Name:  "minecraft:health",
-				Value: float32(math.Ceil(health)),
-				Max:   float32(math.Ceil(max)),
+				Value: float32(health),
+				Max:   float32(max),
 			},
 			DefaultMax: 20,
 			Default:    20,
@@ -1093,8 +1112,9 @@ func stacksToIngredientItems(_ world.BlockRegistry, inputs []recipe.Item) []prot
 
 // creativeContent returns all creative groups, and creative inventory items as protocol item stacks.
 func creativeContent(br world.BlockRegistry) ([]protocol.CreativeGroup, []protocol.CreativeItem) {
-	groups := make([]protocol.CreativeGroup, 0, len(creative.Groups()))
-	for _, group := range creative.Groups() {
+	registeredGroups, registeredItems := creative.Groups(), creative.Items()
+	groups := make([]protocol.CreativeGroup, 0, len(registeredGroups))
+	for _, group := range registeredGroups {
 		groups = append(groups, protocol.CreativeGroup{
 			Category: group.Category.Uint8(),
 			Name:     group.Name,
@@ -1102,9 +1122,12 @@ func creativeContent(br world.BlockRegistry) ([]protocol.CreativeGroup, []protoc
 		})
 	}
 
-	it := make([]protocol.CreativeItem, 0, len(creative.Items()))
-	for index, i := range creative.Items() {
-		group := slices.IndexFunc(creative.Groups(), func(group creative.Group) bool {
+	it := make([]protocol.CreativeItem, 0, len(registeredItems))
+	for index, i := range registeredItems {
+		if i.Stack.Empty() {
+			continue
+		}
+		group := slices.IndexFunc(registeredGroups, func(group creative.Group) bool {
 			return group.Name == i.Group
 		})
 		if group < 0 {
@@ -1117,6 +1140,12 @@ func creativeContent(br world.BlockRegistry) ([]protocol.CreativeGroup, []protoc
 		})
 	}
 	return groups, it
+}
+
+// SendCreativeContent refreshes runtime templates for an already connected client.
+func (s *Session) SendCreativeContent() {
+	groups, items := creativeContent(s.br)
+	s.writePacket(&packet.CreativeContent{Groups: groups, Items: items})
 }
 
 // deleteDamage strips the damage from a protocol item.
@@ -1169,6 +1198,7 @@ func protocolToSkin(sk protocol.Skin) (s skin.Skin, err error) {
 
 		s.Animations = append(s.Animations, animation)
 	}
+	s.PreserveProtocol(sk)
 	return
 }
 
@@ -1337,3 +1367,11 @@ func gameTypeFromMode(mode world.GameMode) int32 {
 //
 //go:linkname item_id github.com/df-mc/dragonfly/server/item.id
 func item_id(s item.Stack) int32
+
+// allowsFlight supports temporary plugin grants on survival players.
+func allowsFlight(c Controllable) bool {
+	if p, ok := c.(interface{ AllowsFlight() bool }); ok {
+		return p.AllowsFlight()
+	}
+	return c.GameMode().AllowsFlying()
+}
