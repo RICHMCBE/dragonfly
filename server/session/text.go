@@ -71,16 +71,16 @@ func (s *Session) SendToast(title, message string) {
 
 // SendScoreboard ...
 func (s *Session) SendScoreboard(sb *scoreboard.Scoreboard) {
-	if s == Nop {
+	if s == Nop || s.conf.DisableScoreboard {
 		return
 	}
 	currentName, currentLines := *s.currentScoreboard.Load(), *s.currentLines.Load()
 
-	if currentName != sb.Name() {
-		s.RemoveScoreboard()
+	if currentName != sb.ObjectiveName() || s.scoreboardDisplayName != sb.Name() {
+		s.removeScoreboardObjective()
 		pk := &packet.SetDisplayObjective{
 			DisplaySlot:   "sidebar",
-			ObjectiveName: sb.Name(),
+			ObjectiveName: sb.ObjectiveName(),
 			DisplayName:   sb.Name(),
 			CriteriaName:  "dummy",
 		}
@@ -90,7 +90,8 @@ func (s *Session) SendScoreboard(sb *scoreboard.Scoreboard) {
 			pk.SortOrder = packet.ScoreboardSortOrderAscending
 		}
 		s.writePacket(pk)
-		name, lines := sb.Name(), append([]string(nil), sb.Lines()...)
+		name, lines := sb.ObjectiveName(), append([]string(nil), sb.Lines()...)
+		s.scoreboardDisplayName = sb.Name()
 		s.currentScoreboard.Store(&name)
 		s.currentLines.Store(&lines)
 	} else {
@@ -115,7 +116,7 @@ func (s *Session) SendScoreboard(sb *scoreboard.Scoreboard) {
 		}
 		pk.Entries = append(pk.Entries, protocol.ScoreboardEntry{
 			EntryID:       int64(k),
-			ObjectiveName: sb.Name(),
+			ObjectiveName: sb.ObjectiveName(),
 			Score:         int32(k),
 			IdentityType:  protocol.ScoreboardIdentityFakePlayer,
 			DisplayName:   line,
@@ -124,14 +125,23 @@ func (s *Session) SendScoreboard(sb *scoreboard.Scoreboard) {
 	if len(pk.Entries) > 0 {
 		s.writePacket(pk)
 	}
+	// Keep removal state in sync even when the objective title is unchanged.
+	// InfoPlugin may hide or split rows as tags change, independently of HP.
+	lines := append([]string(nil), sb.Lines()...)
+	s.currentLines.Store(&lines)
+	s.sendHealthHUDRows()
 }
 
 // colours holds a list of colour codes to be filled out for empty lines in a scoreboard.
 var colours = [15]string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"}
 
 // RemoveScoreboard ...
-func (s *Session) RemoveScoreboard() {
-	s.writePacket(&packet.RemoveObjective{ObjectiveName: *s.currentScoreboard.Load()})
+func (s *Session) removeScoreboardObjective() {
+	if name := *s.currentScoreboard.Load(); name != "" {
+		s.writePacket(&packet.RemoveObjective{ObjectiveName: name})
+	}
+	s.healthHUDSent = false
+	s.scoreboardDisplayName = ""
 	var name string
 	var lines []string
 	s.currentScoreboard.Store(&name)
@@ -184,4 +194,64 @@ func (s *Session) SendSubtitle(text string) {
 // SendActionBarMessage ...
 func (s *Session) SendActionBarMessage(text string) {
 	s.writePacket(&packet.SetTitle{ActionType: packet.TitleActionSetActionBar, Text: text})
+}
+
+// RemoveScoreboard removes ordinary rows while retaining the health HUD.
+func (s *Session) RemoveScoreboard() {
+	if s == Nop || s.conf.DisableScoreboard {
+		return
+	}
+	s.removeScoreboardObjective()
+	s.ensureHealthHUDObjective()
+	s.sendHealthHUDRows()
+}
+
+// SendHealthHUD reserves two sidebar rows. Normal sidebar users should keep
+// at most 13 rows so that the combined display fits Bedrock's 15-row sidebar.
+// Updates use positive IDs outside the ordinary 0..14 row range.
+func (s *Session) SendHealthHUD(bar, text string) {
+	if s == Nop || s.conf.DisableScoreboard {
+		return
+	}
+	s.healthHUDLines.Store(&[2]string{bar, text})
+	s.ensureHealthHUDObjective()
+	s.sendHealthHUDRows()
+}
+
+func (s *Session) ensureHealthHUDObjective() {
+	if s.healthHUDLines.Load() == nil || *s.currentScoreboard.Load() != "" {
+		return
+	}
+	name := "InfoPlugin"
+	s.writePacket(&packet.SetDisplayObjective{DisplaySlot: "sidebar", ObjectiveName: name, DisplayName: "§r", CriteriaName: "dummy"})
+	s.scoreboardDisplayName = "§r"
+	s.currentScoreboard.Store(&name)
+}
+
+func (s *Session) sendHealthHUDRows() {
+	lines := s.healthHUDLines.Load()
+	if lines == nil {
+		return
+	}
+	name := *s.currentScoreboard.Load()
+	if name == "" {
+		return
+	}
+	entries := make([]protocol.ScoreboardEntry, 0, 2)
+	for i, line := range lines {
+		// Scores only determine row ordering; HP is carried in the name payload.
+		score := int32(14 + i)
+		entries = append(entries, protocol.ScoreboardEntry{EntryID: int64(1001 + i), ObjectiveName: name, Score: score, IdentityType: protocol.ScoreboardIdentityFakePlayer, DisplayName: line})
+	}
+	// Removing before adding allows clients to replace changed fake-player names.
+	remove := &packet.SetScore{}
+	for _, entry := range entries {
+		entry.IdentityType = protocol.ScoreboardIdentityRemove
+		remove.Entries = append(remove.Entries, entry)
+	}
+	if s.healthHUDSent {
+		s.writePacket(remove)
+	}
+	s.writePacket(&packet.SetScore{Entries: entries})
+	s.healthHUDSent = true
 }
