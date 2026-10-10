@@ -48,7 +48,15 @@ func (h *ItemStackRequestHandler) Handle(p packet.Packet, s *Session, tx *world.
 	h.current = time.Now()
 
 	s.inTransaction.Store(true)
-	defer s.inTransaction.Store(false)
+	defer func() {
+		s.inTransaction.Store(false)
+		if hook, ok := c.(interface{ InventoryTransactionCommitted() }); ok {
+			hook.InventoryTransactionCommitted()
+		}
+		if menu := s.virtualContainer; menu != nil && menu.afterRequest != nil {
+			menu.afterRequest(tx)
+		}
+	}()
 
 	for _, req := range pk.Requests {
 		if err := h.handleRequest(req, s, tx, c); err != nil {
@@ -87,7 +95,12 @@ func (h *ItemStackRequestHandler) handleRequest(req protocol.ItemStackRequest, s
 		case *protocol.BeaconPaymentStackRequestAction:
 			err = h.handleBeaconPayment(a, s, tx)
 		case *protocol.CraftRecipeStackRequestAction:
-			if s.containerOpened.Load() {
+			if r, ok := s.recipes[a.RecipeNetworkID]; ok {
+				if guard, ok := c.(interface{ AllowCraft([]item.Stack) bool }); ok && !guard.AllowCraft(r.Output()) {
+					return fmt.Errorf("craft cancelled by player handler")
+				}
+			}
+			if s.containerOpened.Load() && s.virtualContainer == nil {
 				var special bool
 				switch tx.Block(*s.openedPos.Load()).(type) {
 				case block.SmithingTable:
@@ -104,6 +117,11 @@ func (h *ItemStackRequestHandler) handleRequest(req protocol.ItemStackRequest, s
 			}
 			err = h.handleCraft(a, s, tx)
 		case *protocol.AutoCraftRecipeStackRequestAction:
+			if r, ok := s.recipes[a.RecipeNetworkID]; ok {
+				if guard, ok := c.(interface{ AllowCraft([]item.Stack) bool }); ok && !guard.AllowCraft(r.Output()) {
+					return fmt.Errorf("craft cancelled by player handler")
+				}
+			}
 			err = h.handleAutoCraft(a, s, tx)
 		case *protocol.CraftRecipeOptionalStackRequestAction:
 			err = h.handleCraftRecipeOptional(a, s, req.FilterStrings, c, tx)
@@ -162,6 +180,11 @@ func (h *ItemStackRequestHandler) handleTransfer(from, to protocol.StackRequestS
 
 	invA, _ := s.invByID(int32(from.Container.ContainerID), tx)
 	invB, _ := s.invByID(int32(to.Container.ContainerID), tx)
+	if guard, ok := c.(interface {
+		AllowInventoryDestination(*inventory.Inventory, int, item.Stack) bool
+	}); ok && !guard.AllowInventoryDestination(invB, int(to.Slot), i) {
+		return fmt.Errorf("inventory destination denied")
+	}
 
 	ctx := event.C(inventory.Holder(c))
 	_ = call(ctx, int(from.Slot), i.Grow(int(count)-i.Count()), invA.Handler().HandleTake)
@@ -186,6 +209,11 @@ func (h *ItemStackRequestHandler) handleSwap(a *protocol.SwapStackRequestAction,
 
 	invA, _ := s.invByID(int32(a.Source.Container.ContainerID), tx)
 	invB, _ := s.invByID(int32(a.Destination.Container.ContainerID), tx)
+	if guard, ok := c.(interface {
+		AllowInventoryDestination(*inventory.Inventory, int, item.Stack) bool
+	}); ok && (!guard.AllowInventoryDestination(invB, int(a.Destination.Slot), i) || !guard.AllowInventoryDestination(invA, int(a.Source.Slot), dest)) {
+		return fmt.Errorf("inventory destination denied")
+	}
 
 	ctx := event.C(inventory.Holder(c))
 	_ = call(ctx, int(a.Source.Slot), i, invA.Handler().HandleTake)
@@ -206,7 +234,7 @@ func (h *ItemStackRequestHandler) handleSwap(a *protocol.SwapStackRequestAction,
 // collectRewards checks if the source inventory has rewards for the player, for example, experience rewards when
 // smelting. If it does, it will drop the rewards at the player's location.
 func (h *ItemStackRequestHandler) collectRewards(s *Session, inv *inventory.Inventory, slot int, tx *world.Tx, c Controllable) {
-	if inv == s.openedWindow.Load() && s.containerOpened.Load() && slot == inv.Size()-1 {
+	if s.virtualContainer == nil && inv == s.openedWindow.Load() && s.containerOpened.Load() && slot == inv.Size()-1 {
 		if f, ok := tx.Block(*s.openedPos.Load()).(smelter); ok {
 			for _, o := range entity.NewExperienceOrbs(entity.EyePosition(c), f.ResetExperience()) {
 				tx.AddEntity(o)
@@ -229,6 +257,17 @@ func (h *ItemStackRequestHandler) handleDestroy(a *protocol.DestroyStackRequestA
 	i, _ := h.itemInSlot(a.Source, s, tx)
 	if i.Count() < int(a.Count) {
 		return fmt.Errorf("client attempted to destroy %v items, but only %v present", a.Count, i.Count())
+	}
+	inv, _ := s.invByID(int32(a.Source.Container.ContainerID), tx)
+	if s.virtualContainer != nil && inv == s.openedWindow.Load() {
+		if err := call(event.C(inventory.Holder(c)), int(a.Source.Slot), i.Grow(int(a.Count)-i.Count()), inv.Handler().HandleTake); err != nil {
+			return err
+		}
+	}
+	if guard, ok := c.(interface {
+		AllowInventoryDestination(*inventory.Inventory, int, item.Stack) bool
+	}); ok && !guard.AllowInventoryDestination(inv, int(a.Source.Slot), i) {
+		return fmt.Errorf("item cannot be destroyed")
 	}
 
 	h.setItemInSlot(a.Source, i.Grow(-int(a.Count)), s, tx)
@@ -435,6 +474,9 @@ func (h *ItemStackRequestHandler) setItemInSlot(slot protocol.StackRequestSlotIn
 
 	if h.changes[slot.Container.ContainerID] == nil {
 		h.changes[slot.Container.ContainerID] = map[byte]changeInfo{}
+	}
+	if previous, exists := h.changes[slot.Container.ContainerID][slot.Slot]; exists {
+		before = previous.before
 	}
 	h.changes[slot.Container.ContainerID][slot.Slot] = changeInfo{
 		after:  respSlot,
