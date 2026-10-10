@@ -149,7 +149,7 @@ func (h PlayerAuthInputHandler) handleInputFlags(flags protocol.InputFlags, s *S
 		c.PunchAir()
 	}
 	if flags.Load(packet.InputFlagStartFlying) {
-		if !c.GameMode().AllowsFlying() {
+		if !allowsFlight(c) {
 			s.conf.Log.Debug("process packet: PlayerAuthInput: flying flag enabled while unable to fly")
 			s.SendAbilities(c)
 		} else {
