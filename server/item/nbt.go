@@ -3,6 +3,8 @@ package item
 import (
 	"bytes"
 	"encoding/gob"
+	"github.com/sandertv/gophertunnel/minecraft/nbt"
+	"maps"
 	"sort"
 
 	"github.com/df-mc/dragonfly/server/world"
@@ -13,7 +15,10 @@ import (
 // selects the disk format over the network one, which differ in how an item's
 // damage is written and in whether the stack is wrapped with its name and count.
 func WriteNBT(s Stack, disk bool) map[string]any {
-	tag := make(map[string]any)
+	tag := maps.Clone(s.extraNBT)
+	if tag == nil {
+		tag = make(map[string]any)
+	}
 	if s.Empty() {
 		return tag
 	}
@@ -62,7 +67,60 @@ func ReadNBT(data map[string]any, s *Stack) Stack {
 	readDragonflyData(tag, s)
 	readEnchantments(tag, s)
 	readUnbreakable(tag, s)
+	extra := maps.Clone(tag)
+	for _, key := range []string{"RepairCost", "Damage", "display", "dragonflyData", "ench", "Unbreakable"} {
+		delete(extra, key)
+	}
+	if custom, ok := s.Item().(world.NBTer); ok {
+		for key := range custom.EncodeNBT() {
+			delete(extra, key)
+		}
+	}
+	if len(extra) > 0 {
+		s.extraNBT = extra
+	} else {
+		s.extraNBT = nil
+	}
 	return *s
+}
+
+// WithNBTValue preserves plugin tags on vanilla items using their original NBT
+// names and types. Copies are normalised through NBT to prevent shared mutation.
+func (s Stack) WithNBTValue(key string, value any) Stack {
+	tag := WriteNBT(s, false)
+	if value == nil {
+		delete(tag, key)
+	} else {
+		tag[key] = value
+	}
+	raw, err := nbt.MarshalEncoding(tag, nbt.LittleEndian)
+	if err != nil {
+		panic(err)
+	}
+	var copied map[string]any
+	if err = nbt.UnmarshalEncoding(raw, &copied, nbt.LittleEndian); err != nil {
+		panic(err)
+	}
+	if custom, ok := s.item.(world.NBTer); ok {
+		if decoded, ok := custom.DecodeNBT(copied).(world.Item); ok {
+			s.item = decoded
+		}
+	}
+	return ReadNBT(copied, &s)
+}
+
+// NBTValue reads an original item tag without exposing mutable stack storage.
+func (s Stack) NBTValue(key string) (any, bool) {
+	raw, err := nbt.MarshalEncoding(WriteNBT(s, false), nbt.LittleEndian)
+	if err != nil {
+		return nil, false
+	}
+	var copied map[string]any
+	if nbt.UnmarshalEncoding(raw, &copied, nbt.LittleEndian) != nil {
+		return nil, false
+	}
+	v, ok := copied[key]
+	return v, ok
 }
 
 // MapNBT converts an item's name, count, damage (and properties when it is a
