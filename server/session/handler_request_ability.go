@@ -12,7 +12,7 @@ type RequestAbilityHandler struct{}
 func (a RequestAbilityHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, c Controllable) error {
 	pk := p.(*packet.RequestAbility)
 	if pk.Ability == packet.AbilityFlying {
-		if !c.GameMode().AllowsFlying() {
+		if !allowsFlight(c) {
 			s.conf.Log.Debug("process packet: RequestAbility: flying flag enabled while unable to fly")
 			s.SendAbilities(c)
 			return nil
