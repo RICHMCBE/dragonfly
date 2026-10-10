@@ -28,7 +28,8 @@ type Stack struct {
 
 	anvilCost int
 
-	data map[string]any
+	data     map[string]any
+	extraNBT map[string]any
 
 	enchantments map[EnchantmentType]Enchantment
 }
@@ -42,7 +43,11 @@ func NewStack(t world.Item, count int) Stack {
 	if t == nil {
 		panic("cannot have a stack with item type nil")
 	}
-	return Stack{item: t, count: count, id: newID()}
+	s := Stack{item: t, count: count, id: newID()}
+	if defaults, ok := t.(interface{ DefaultStack(Stack) Stack }); ok {
+		s = defaults.DefaultStack(s)
+	}
+	return s
 }
 
 // Count returns the amount of items that is present on the stack. The count is guaranteed never to be
@@ -375,6 +380,7 @@ func (s Stack) WithItem(t world.Item) Stack {
 		WithAnvilCost(s.anvilCost)
 	cp.unbreakable = s.unbreakable && s.MaxDurability() != -1
 	cp.data = s.data
+	cp.extraNBT = s.extraNBT
 	return cp
 }
 
@@ -433,6 +439,9 @@ func (s Stack) Comparable(s2 Stack) bool {
 		}
 	}
 	if !reflect.DeepEqual(s.data, s2.data) {
+		return false
+	}
+	if !reflect.DeepEqual(s.extraNBT, s2.extraNBT) {
 		return false
 	}
 	if nbt, ok := s.Item().(world.NBTer); ok {
