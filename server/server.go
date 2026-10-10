@@ -466,7 +466,16 @@ func (srv *Server) finaliseConn(ctx context.Context, conn session.Conn, l Listen
 	id := uuid.MustParse(conn.IdentityData().Identity)
 	data := srv.defaultGameData()
 
-	d, w, err := srv.conf.PlayerProvider.Load(id, srv.dimension)
+	var d player.Config
+	var w *world.World
+	var err error
+	if provider, ok := srv.conf.PlayerProvider.(interface {
+		LoadIdentity(uuid.UUID, string, func(world.Dimension) *world.World) (player.Config, *world.World, error)
+	}); ok {
+		d, w, err = provider.LoadIdentity(id, conn.IdentityData().XUID, srv.dimension)
+	} else {
+		d, w, err = srv.conf.PlayerProvider.Load(id, srv.dimension)
+	}
 	if err != nil {
 		w = srv.world
 		d.Position = w.Spawn().Vec3Centre()
@@ -492,6 +501,7 @@ func (srv *Server) finaliseConn(ctx context.Context, conn session.Conn, l Listen
 		return
 	}
 	_ = conn.WritePacket(&packet.ItemRegistry{Items: srv.customItems})
+	srv.conf.Log.Debug("player spawn handshake completed", "raddr", conn.RemoteAddr())
 	srv.incoming <- srv.createPlayer(id, conn, d, w)
 }
 
@@ -572,13 +582,15 @@ func (srv *Server) createPlayer(id uuid.UUID, conn session.Conn, conf player.Con
 	srv.pwg.Add(1)
 
 	s := session.Config{
-		Log:            srv.conf.Log,
-		MaxChunkRadius: srv.conf.MaxChunkRadius,
-		EmoteChatMuted: srv.conf.MuteEmoteChat,
-		JoinMessage:    srv.conf.JoinMessage,
-		QuitMessage:    srv.conf.QuitMessage,
-		HandleStop:     srv.handleSessionClose,
-		BlockRegistry:  w.BlockRegistry(),
+		PacketProcessor:   srv.conf.PacketProcessor,
+		DisableScoreboard: srv.conf.DisableScoreboard,
+		Log:               srv.conf.Log,
+		MaxChunkRadius:    srv.conf.MaxChunkRadius,
+		EmoteChatMuted:    srv.conf.MuteEmoteChat,
+		JoinMessage:       srv.conf.JoinMessage,
+		QuitMessage:       srv.conf.QuitMessage,
+		HandleStop:        srv.handleSessionClose,
+		BlockRegistry:     w.BlockRegistry(),
 	}.New(conn)
 
 	conf.Name = conn.IdentityData().DisplayName
@@ -663,6 +675,7 @@ func (srv *Server) parseSkin(data login.ClientData) skin.Skin {
 		playerSkin.Animations = append(playerSkin.Animations, anim)
 	}
 
+	preserveLoginSkin(&playerSkin, data)
 	return playerSkin
 }
 
