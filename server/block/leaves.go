@@ -64,10 +64,18 @@ func findLog(pos cube.Pos, tx *world.Tx) bool {
 
 // RandomTick ...
 func (l Leaves) RandomTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
-	if !l.Persistent && l.ShouldUpdate {
+	if l.Persistent {
+		l.RemoveUnsupported(pos, tx)
+		return
+	}
+	// Imported worlds may contain orphan leaves with update_bit unset. Check
+	// natural leaves on random ticks too, without touching persistent decorations.
+	if !l.Persistent {
 		if findLog(pos, tx) {
-			l.ShouldUpdate = false
-			tx.SetBlock(pos, l, nil)
+			if l.ShouldUpdate {
+				l.ShouldUpdate = false
+				tx.SetBlock(pos, l, nil)
+			}
 			return
 		}
 		ctx := tx.Event()
@@ -82,6 +90,50 @@ func (l Leaves) RandomTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 			dropItem(tx, drop, pos.Vec3Centre())
 		}
 	}
+}
+
+// RemoveUnsupported removes an isolated persistent leaf component. Imported
+// landscaping uses persistent leaves even on trees, so log-connected crowns
+// and ground-supported hedges must survive regardless of their size or shape.
+// Large components are conservatively retained to bound work per tick.
+func (l Leaves) RemoveUnsupported(pos cube.Pos, tx *world.Tx) int {
+	seen := map[cube.Pos]bool{pos: true}
+	queue := []cube.Pos{pos}
+	for i := 0; i < len(queue); i++ {
+		at := queue[i]
+		below := at.Side(cube.FaceDown)
+		b := tx.Block(below)
+		if _, leaf := b.(Leaves); !leaf && b.Model().FaceSolid(below, cube.FaceUp, tx) {
+			return 0
+		}
+		supported := false
+		at.Neighbours(func(p cube.Pos) {
+			switch tx.Block(p).(type) {
+			case Log, Wood:
+				supported = true
+			case Leaves:
+				if !seen[p] {
+					seen[p] = true
+					queue = append(queue, p)
+				}
+			}
+		}, tx.Range())
+		if supported || len(queue) > 2048 {
+			return 0
+		}
+	}
+	// Respect world protection handlers before modifying any of the component.
+	for _, p := range queue {
+		ctx := tx.Event()
+		tx.World().Handler().HandleLeavesDecay(ctx, p)
+		if ctx.Cancelled() {
+			return 0
+		}
+	}
+	for _, p := range queue {
+		tx.SetBlock(p, nil, nil)
+	}
+	return len(queue)
 }
 
 // NeighbourUpdateTick ...
