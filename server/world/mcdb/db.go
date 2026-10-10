@@ -301,7 +301,7 @@ func (db *DB) entitiesOld(k dbKey) ([]chunk.Entity, error) {
 		}
 		ent.ID, ok = ent.Data["UniqueID"].(int64)
 		if !ok {
-			db.conf.Log.Error("missing unique ID field, generating random", "data", fmt.Sprint(ent.Data))
+			db.conf.Log.Debug("missing unique ID field, generating random", "type", ent.Data["id"])
 			ent.ID = rand.Int64()
 		}
 		entities = append(entities, ent)
