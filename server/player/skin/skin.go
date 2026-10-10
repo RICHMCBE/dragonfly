@@ -9,7 +9,8 @@ import (
 // cape, if one is present.
 // Skin implements the image.Image interface to ease working with the value as an image.
 type Skin struct {
-	w, h int
+	original *protocolSnapshot
+	w, h     int
 	// Persona specifies if the skin uses the persona skin system.
 	Persona   bool
 	PlayFabID string
