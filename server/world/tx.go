@@ -18,6 +18,9 @@ type Tx struct {
 	deferred []scheduledTransaction
 }
 
+// ChunkLoaded checks memory without loading or generating terrain.
+func (tx *Tx) ChunkLoaded(pos ChunkPos) bool { _, ok := tx.w.chunks[pos]; return ok }
+
 // Context is a cancellable event scope passed to Handler events. It embeds the
 // owner transaction, so world operations are available directly on it.
 type Context struct {
