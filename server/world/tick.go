@@ -44,6 +44,7 @@ func (w *World) AdvanceTick() {
 // tick performs a tick on the World and updates the time, weather, blocks and
 // entities that require updates.
 func (t ticker) tick(tx *Tx) {
+	tx.w.runPluginTasks(tx)
 	viewers, loaders := tx.World().allViewers()
 	w := tx.World()
 
@@ -112,6 +113,9 @@ func (t ticker) performNeighbourUpdates(tx *Tx) {
 
 	for _, update := range updates {
 		pos, changedNeighbour := update.pos, update.neighbour
+		if !allowBlockUpdate(tx, pos) {
+			continue
+		}
 		if ticker, ok := tx.Block(pos).(NeighbourUpdateTicker); ok {
 			ticker.NeighbourUpdateTick(pos, changedNeighbour, tx)
 		}
@@ -312,6 +316,9 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 	w := tx.World()
 	for _, t := range queue.ticks {
 		if t.t > tick {
+			continue
+		}
+		if !allowBlockUpdate(tx, t.pos) {
 			continue
 		}
 		b := tx.Block(t.pos)
