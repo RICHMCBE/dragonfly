@@ -8,6 +8,8 @@ import (
 
 // noinspection SpellCheckingInspection
 func init() {
+	world.RegisterItem(FishingRod{})
+	world.RegisterItem(FilledMap{})
 	world.RegisterItem(AmethystShard{})
 	world.RegisterItem(Apple{})
 	world.RegisterItem(Arrow{})
