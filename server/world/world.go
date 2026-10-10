@@ -27,8 +27,10 @@ import (
 // world, so World ensures that all its methods will always be safe for
 // simultaneous calls. A nil *World is safe to use but not functional.
 type World struct {
-	conf Config
-	ra   cube.Range
+	pluginTick  int64
+	pluginTasks map[int64][]func(*Tx)
+	conf        Config
+	ra          cube.Range
 
 	queue        chan transaction
 	queueClosing chan struct{}
@@ -1215,6 +1217,9 @@ func (w *World) saveChunk(_ *Tx, pos ChunkPos, c *Column) {
 // Afterwards, scheduled updates from that chunk are removed and all entities
 // in it are closed.
 func (w *World) closeChunk(tx *Tx, pos ChunkPos, c *Column) {
+	if h, ok := w.Handler().(interface{ HandleChunkUnload(*Tx, ChunkPos) }); ok {
+		h.HandleChunkUnload(tx, pos)
+	}
 	w.saveChunk(tx, pos, c)
 	w.scheduledUpdates.removeChunk(pos)
 	w.redstone.removeChunk(pos)
@@ -1552,6 +1557,9 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 		Tick:            w.scheduledUpdates.currentTick,
 	}
 	for _, e := range col.Entities {
+		if transient, ok := e.t.(interface{ SaveWithChunk() bool }); ok && !transient.SaveWithChunk() {
+			continue
+		}
 		data := e.encodeNBT()
 		maps.Copy(data, e.t.EncodeNBT(&e.data))
 		data["identifier"] = e.t.EncodeEntity()
@@ -1576,6 +1584,9 @@ func (w *World) columnFrom(c *chunk.Column, _ ChunkPos) *Column {
 	}
 	for _, e := range c.Entities {
 		eid, ok := e.Data["identifier"].(string)
+		if !ok {
+			eid, ok = e.Data["id"].(string)
+		}
 		if !ok {
 			w.conf.Log.Error("read column: entity without identifier field", "ID", e.ID)
 			continue
