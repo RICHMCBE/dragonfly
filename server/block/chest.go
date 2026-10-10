@@ -181,7 +181,20 @@ func (c Chest) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.
 	// Check both sides of the chest to see if it is possible to pair with another chest.
 	for _, dir := range []cube.Direction{c.Facing.RotateLeft(), c.Facing.RotateRight()} {
 		if ch, pair, ok := c.pair(tx, pos, pos.Side(dir.Face())); ok {
+			previous, countSub := tx.Block(pos), ctx.CountSub
 			place(tx, pos, ch, user, ctx)
+			if !placed(ctx) {
+				return false
+			}
+			if handler, ok := tx.World().Handler().(interface {
+				HandleChestPair(*world.Tx, cube.Pos, cube.Pos) error
+			}); ok {
+				if err := handler.HandleChestPair(tx, pos, ch.pairPos(pos)); err != nil {
+					tx.SetBlock(pos, previous, nil)
+					ctx.CountSub = countSub
+					return false
+				}
+			}
 			tx.SetBlock(ch.pairPos(pos), pair, nil)
 			return placed(ctx)
 		}
@@ -222,6 +235,9 @@ func (c Chest) FlammabilityInfo() FlammabilityInfo {
 func (c Chest) Paired() bool {
 	return c.paired
 }
+
+// PairPosition exposes the other half without requiring callers to decode NBT.
+func (c Chest) PairPosition(pos cube.Pos) (cube.Pos, bool) { return c.pairPos(pos), c.paired }
 
 // pair pairs this chest with the given chest position.
 func (c Chest) pair(tx *world.Tx, pos, pairPos cube.Pos) (ch, pair Chest, ok bool) {
