@@ -2,6 +2,10 @@ package particle
 
 import "image/color"
 
+type Bubble struct{ particle }
+type WaterSplash struct{ particle }
+type WaterWake struct{ particle }
+
 // HugeExplosion is a particle shown when TNT or a creeper explodes.
 type HugeExplosion struct{ particle }
 
