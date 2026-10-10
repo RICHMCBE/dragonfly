@@ -16,9 +16,10 @@ func (TextHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, c Controllab
 	if pk.TextType != packet.TextTypeChat {
 		return fmt.Errorf("TextType should always be Chat (%v), but got %v", packet.TextTypeChat, pk.TextType)
 	}
-	if pk.SourceName != s.conn.IdentityData().DisplayName {
-		return fmt.Errorf("SourceName must be equal to DisplayName")
-	}
+	// SourceName is presentation metadata. A client may echo the decorated
+	// PlayerList username (for example an admin/guide badge). Never use this
+	// untrusted field for attribution: c belongs to this authenticated session
+	// and Chat uses that player's server-owned identity.
 	if pk.XUID != s.conn.IdentityData().XUID {
 		return fmt.Errorf("XUID must be equal to player's XUID")
 	}
