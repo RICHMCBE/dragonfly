@@ -24,6 +24,9 @@ func buildItems(dir string) (count int, lang []string) {
 
 	textureData := make(map[string]any)
 	for _, item := range world.CustomItems() {
+		if external, ok := item.(interface{ ExternalResourcePack() bool }); ok && external.ExternalResourcePack() {
+			continue
+		}
 		identifier, _ := item.EncodeItem()
 		lang = append(lang, fmt.Sprintf("item.%s.name=%s", identifier, item.Name()))
 
