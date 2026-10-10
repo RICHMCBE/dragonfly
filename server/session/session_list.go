@@ -85,7 +85,7 @@ func (l *sessionList) sendSessionTo(s, to *Session) {
 			Username:       s.conn.IdentityData().DisplayName,
 			XUID:           s.conn.IdentityData().XUID,
 			BuildPlatform:  int32(protocol.DeviceUnknown),
-			Skin:           skinToProtocol(s.joinSkin),
+			Skin:           skinToProtocol(*s.listSkin.Load()),
 		}},
 	})
 }
@@ -106,6 +106,9 @@ func (l *sessionList) unsendSessionFrom(s, from *Session) {
 
 // skinToProtocol converts a skin to its protocol representation.
 func skinToProtocol(s skin.Skin) protocol.Skin {
+	if original, ok := s.OriginalProtocol(); ok {
+		return original
+	}
 	var animations []protocol.SkinAnimation
 	for _, animation := range s.Animations {
 		protocolAnim := protocol.SkinAnimation{
