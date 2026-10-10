@@ -3,6 +3,7 @@ on: [push]
 jobs:
 
   build:
+    if: github.repository == 'df-mc/dragonfly'
     name: Build
     runs-on: ubuntu-latest
     steps:
