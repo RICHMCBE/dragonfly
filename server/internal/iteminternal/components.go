@@ -9,6 +9,9 @@ import (
 // Components returns all the components of the given custom item. If the item has no components, a nil map and false
 // are returned.
 func Components(it world.CustomItem) map[string]any {
+	if custom, ok := it.(interface{ ItemComponents() map[string]any }); ok {
+		return custom.ItemComponents()
+	}
 	category := it.Category()
 	identifier, _ := it.EncodeItem()
 	name := strings.Split(identifier, ":")[1]
