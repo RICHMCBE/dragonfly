@@ -14,6 +14,8 @@ import (
 // world. The data held here is usually saved in a level.dat file of the world.
 // Data may be used in LevelDat.Unmarshal to collect the data of the level.dat.
 type Data struct {
+	extra                          map[string]any
+	PMMPDataVersion                int64
 	BaseGameVersion                string `nbt:"baseGameVersion"`
 	BiomeOverride                  string
 	ConfirmedPlatformLockedContent bool
@@ -26,6 +28,8 @@ type Data struct {
 	ForceGameType                  bool
 	GameType                       int32
 	Generator                      int32
+	GeneratorName                  string `nbt:"generatorName"`
+	GeneratorOptions               string `nbt:"generatorOptions"`
 	InventoryVersion               string
 	LANBroadcast                   bool
 	LANBroadcastIntent             bool
