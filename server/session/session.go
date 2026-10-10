@@ -41,8 +41,11 @@ type Session struct {
 	handlers map[uint32]packetHandler
 	packets  chan packet.Packet
 
-	currentScoreboard atomic.Pointer[string]
-	currentLines      atomic.Pointer[[]string]
+	currentScoreboard     atomic.Pointer[string]
+	currentLines          atomic.Pointer[[]string]
+	healthHUDLines        atomic.Pointer[[2]string]
+	scoreboardDisplayName string
+	healthHUDSent         bool
 
 	chunkLoader                 *world.Loader
 	chunkRadius, maxChunkRadius int32
@@ -65,10 +68,9 @@ type Session struct {
 	inv, offHand, enderChest, ui *inventory.Inventory
 	armour                       *inventory.Armour
 
-	// joinSkin is the first skin that the player joined with. It is sent on
-	// spawn for the player list, but otherwise updated immediately when the
-	// player is viewed.
-	joinSkin skin.Skin
+	// listSkin is the latest immutable skin snapshot, also read from other
+	// worlds when a new session receives the player list.
+	listSkin atomic.Pointer[skin.Skin]
 
 	breakingPos cube.Pos
 
@@ -77,6 +79,7 @@ type Session struct {
 	openedContainerID              atomic.Uint32
 	openedWindow                   atomic.Pointer[inventory.Inventory]
 	openedPos                      atomic.Pointer[cube.Pos]
+	virtualContainer               *virtualContainer
 	swingingArm                    atomic.Bool
 	changingSlot                   atomic.Bool
 	changingDimension              atomic.Bool
@@ -157,7 +160,9 @@ const selfEntityRuntimeID = 1
 var errSelfRuntimeID = errors.New("invalid entity runtime ID: runtime ID for self must always be 1")
 
 type Config struct {
-	Log *slog.Logger
+	PacketProcessor   func() PacketProcessor
+	DisableScoreboard bool
+	Log               *slog.Logger
 
 	MaxChunkRadius int
 
@@ -230,12 +235,31 @@ func (conf Config) New(conn Conn) *Session {
 	s.sendArmourTrimData()
 	s.SendSpeed(0.1)
 	go func() {
+		var processor PacketProcessor
+		var ticks <-chan time.Time
+		if conf.PacketProcessor != nil {
+			processor = conf.PacketProcessor()
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+			ticks = ticker.C
+		}
+		send := func(packets []packet.Packet) {
+			for _, pk := range packets {
+				_ = conn.WritePacket(pk)
+			}
+		}
 		for {
 			select {
 			case <-s.closeBackground:
 				return
 			case pk := <-s.packets:
-				_ = conn.WritePacket(pk)
+				if processor == nil {
+					_ = conn.WritePacket(pk)
+				} else {
+					send(processor.Process(pk, time.Now()))
+				}
+			case now := <-ticks:
+				send(processor.Tick(now))
 			}
 		}
 	}()
@@ -249,7 +273,7 @@ func (s *Session) SetHandle(handle *world.EntityHandle, skin skin.Skin) {
 	s.entityRuntimeIDs[handle] = selfEntityRuntimeID
 	s.entities[selfEntityRuntimeID] = handle
 
-	s.joinSkin = skin
+	s.listSkin.Store(&skin)
 	sessions.Add(s)
 }
 
@@ -409,6 +433,7 @@ func (s *Session) handlePackets() {
 	for {
 		pk, err := s.conn.ReadPacket()
 		if err != nil {
+			s.conf.Log.Debug("session read ended", "error", err)
 			return
 		}
 		err = s.withControllable(context.Background(), func(tx *world.Tx, c Controllable) error {
@@ -591,6 +616,7 @@ func (s *Session) registerHandlers() {
 		packet.IDClientCacheBlobStatus:     &ClientCacheBlobStatusHandler{},
 		packet.IDCommandRequest:            &CommandRequestHandler{},
 		packet.IDContainerClose:            &ContainerCloseHandler{},
+		packet.IDNetworkStackLatency:       &virtualContainerLatencyHandler{},
 		packet.IDEmote:                     &EmoteHandler{},
 		packet.IDEmoteList:                 nil,
 		packet.IDFilterText:                nil,
@@ -607,6 +633,7 @@ func (s *Session) registerHandlers() {
 		packet.IDPlayerSkin:                &PlayerSkinHandler{},
 		packet.IDRequestAbility:            &RequestAbilityHandler{},
 		packet.IDRequestChunkRadius:        &RequestChunkRadiusHandler{},
+		packet.IDMapInfoRequest:            &MapInfoRequestHandler{},
 		packet.IDRespawn:                   &RespawnHandler{},
 		packet.IDSetPlayerFurnaceOptions:   nil,
 		packet.IDSetPlayerInventoryOptions: nil,
