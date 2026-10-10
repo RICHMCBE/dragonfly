@@ -551,6 +551,17 @@ func (reg EntityRegistry) Config() EntityRegistryConfig {
 // returned and the bool is true. The bool is false otherwise.
 func (reg EntityRegistry) Lookup(name string) (EntityType, bool) {
 	t, ok := reg.ent[name]
+	if !ok {
+		for _, candidate := range reg.ent {
+			if legacy, yes := candidate.(interface{ LegacyNames() []string }); yes {
+				for _, alias := range legacy.LegacyNames() {
+					if alias == name {
+						return candidate, true
+					}
+				}
+			}
+		}
+	}
 	return t, ok
 }
 
@@ -566,8 +577,12 @@ func readVec3(x map[string]any, k string) mgl64.Vec3 {
 		}
 		var v mgl64.Vec3
 		for index, f := range i {
-			f32, _ := f.(float32)
-			v[index] = float64(f32)
+			switch number := f.(type) {
+			case float32:
+				v[index] = float64(number)
+			case float64:
+				v[index] = number
+			}
 		}
 		return v
 	} else if i, ok := x[k].([]float32); ok {
@@ -575,6 +590,8 @@ func readVec3(x map[string]any, k string) mgl64.Vec3 {
 			return mgl64.Vec3{}
 		}
 		return mgl64.Vec3{float64(i[0]), float64(i[1]), float64(i[2])}
+	} else if i, ok := x[k].([]float64); ok && len(i) == 3 {
+		return mgl64.Vec3{i[0], i[1], i[2]}
 	}
 	return mgl64.Vec3{}
 }
@@ -585,6 +602,27 @@ func readFloat32(m map[string]any, k string) float32 {
 }
 
 func readRotation(m map[string]any) cube.Rotation {
+	if _, ok := m["Yaw"]; !ok {
+		switch r := m["Rotation"].(type) {
+		case []any:
+			if len(r) == 2 {
+				var result cube.Rotation
+				for i, v := range r {
+					switch n := v.(type) {
+					case float32:
+						result[i] = float64(n)
+					case float64:
+						result[i] = n
+					}
+				}
+				return result
+			}
+		case []float32:
+			if len(r) == 2 {
+				return cube.Rotation{float64(r[0]), float64(r[1])}
+			}
+		}
+	}
 	return cube.Rotation{float64(readFloat32(m, "Yaw")), float64(readFloat32(m, "Pitch"))}
 }
 
