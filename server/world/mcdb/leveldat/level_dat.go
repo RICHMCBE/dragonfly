@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 )
@@ -51,8 +52,44 @@ func Read(r io.Reader) (*LevelDat, error) {
 // returns an error if dst was unable to store all properties found in the
 // level.dat.
 func (ld *LevelDat) Unmarshal(dst any) error {
-	if err := nbt.UnmarshalEncoding(ld.data, dst, nbt.LittleEndian); err != nil {
+	data := ld.data
+	var extras map[string]any
+	if _, ok := dst.(*Data); ok {
+		var fields map[string]any
+		if err := nbt.UnmarshalEncoding(data, &fields, nbt.LittleEndian); err != nil {
+			return err
+		}
+		known := map[string]bool{}
+		typ := reflect.TypeOf(Data{})
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			name := f.Tag.Get("nbt")
+			if name == "" {
+				name = f.Name
+			}
+			known[name] = true
+		}
+		extras = map[string]any{}
+		for name, value := range fields {
+			if !known[name] {
+				extras[name] = value
+				delete(fields, name)
+			}
+		}
+		var err error
+		data, err = nbt.MarshalEncoding(fields, nbt.LittleEndian)
+		if err != nil {
+			return err
+		}
+	}
+	if err := nbt.UnmarshalEncoding(data, dst, nbt.LittleEndian); err != nil {
 		return fmt.Errorf("level.dat: decode nbt: %w", err)
+	}
+	if d, ok := dst.(*Data); ok {
+		d.extra = extras
 	}
 	return nil
 }
@@ -70,6 +107,21 @@ func (ld *LevelDat) Marshal(src any) error {
 	ld.data, err = nbt.MarshalEncoding(src, nbt.LittleEndian)
 	if err != nil {
 		return fmt.Errorf("level.dat: encode nbt: %w", err)
+	}
+	if d, ok := src.(Data); ok && len(d.extra) > 0 {
+		var fields map[string]any
+		if err = nbt.UnmarshalEncoding(ld.data, &fields, nbt.LittleEndian); err != nil {
+			return err
+		}
+		for k, v := range d.extra {
+			if _, exists := fields[k]; !exists {
+				fields[k] = v
+			}
+		}
+		ld.data, err = nbt.MarshalEncoding(fields, nbt.LittleEndian)
+		if err != nil {
+			return err
+		}
 	}
 	ld.hdr = header{
 		StorageVersion: Version,
