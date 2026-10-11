@@ -641,6 +641,7 @@ func (s *Session) registerHandlers() {
 		packet.IDText:                      &TextHandler{},
 		packet.IDServerBoundLoadingScreen:  &ServerBoundLoadingScreenHandler{},
 		packet.IDServerBoundDiagnostics:    &ServerBoundDiagnosticsHandler{},
+		packet.IDServerSettingsRequest:     &ServerSettingsRequestHandler{},
 	}
 }
 
