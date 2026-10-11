@@ -111,6 +111,12 @@ func skinToProtocol(s skin.Skin) protocol.Skin {
 	}
 	var animations []protocol.SkinAnimation
 	for _, animation := range s.Animations {
+		// An animation whose pixel data does not match its bounds (for example one
+		// restored without dimensions) would make the protocol writer panic and take
+		// the whole server down, so it is dropped instead.
+		if b := animation.Bounds(); b.Dx() <= 0 || b.Dy() <= 0 || len(animation.Pix) != b.Dx()*b.Dy()*4 {
+			continue
+		}
 		protocolAnim := protocol.SkinAnimation{
 			ImageWidth:  uint32(animation.Bounds().Max.X),
 			ImageHeight: uint32(animation.Bounds().Max.Y),
