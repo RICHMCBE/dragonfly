@@ -358,6 +358,11 @@ func (p *Player) ExecuteCommand(commandLine string) {
 	if !ok {
 		return
 	}
+	// Optional audit hook preserves the original command and unknown attempts
+	// without changing the public Handler interface or permission checks.
+	if audit, ok := p.Handler().(interface{ HandleCommandAttempt(*Player, string) }); ok {
+		audit.HandleCommandAttempt(p, commandLine)
+	}
 
 	command, ok := cmd.ByAlias(name)
 	if !ok {
@@ -547,6 +552,13 @@ func (p *Player) SetMaxHealthPreservingRatio(health float64) {
 	ratio := p.Health() / p.MaxHealth()
 	p.health.SetMaxHealth(health)
 	p.addHealth(health*ratio - p.Health())
+}
+
+// SetHealth sets the current health, clamped between 1 and the maximum health.
+// It never kills the player.
+func (p *Player) SetHealth(health float64) {
+	health = min(p.MaxHealth(), max(1, health))
+	p.addHealth(health - p.Health())
 }
 
 // addHealth adds health to the player's current health.
@@ -3276,6 +3288,17 @@ func (p *Player) PunchAir() {
 // UpdateDiagnostics updates the diagnostics of the player.
 func (p *Player) UpdateDiagnostics(d session.Diagnostics) {
 	p.Handler().HandleDiagnostics(p, d)
+}
+
+// RequestServerSettings is called when the client asks for the server settings form.
+func (p *Player) RequestServerSettings() {
+	p.Handler().HandleServerSettingsRequest(p)
+}
+
+// SendServerSettings sends a form as the client's server settings page. Submissions use the normal form
+// response path.
+func (p *Player) SendServerSettings(f form.Form) {
+	p.session().SendServerSettings(f)
 }
 
 // ShowHudElement shows a HUD element to the player if it is not already shown.
