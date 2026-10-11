@@ -50,26 +50,35 @@ func (b Beacon) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _
 // DecodeNBT ...
 func (b Beacon) DecodeNBT(data map[string]any) any {
 	b.level = int(nbtconv.Int32(data, "Levels"))
-	if primary, ok := effect.ByID(int(nbtconv.Int32(data, "Primary"))); ok {
-		b.Primary = primary.(effect.LastingType)
-	}
-	if secondary, ok := effect.ByID(int(nbtconv.Int32(data, "Secondary"))); ok {
-		b.Secondary = secondary.(effect.LastingType)
-	}
+	b.Primary = beaconEffectNBT(data, "primary", "Primary")
+	b.Secondary = beaconEffectNBT(data, "secondary", "Secondary")
 	return b
+}
+
+// beaconEffectNBT reads Bedrock's lowercase keys, falling back to keys written
+// by older Dragonfly versions. Unknown and instant effects are ignored.
+func beaconEffectNBT(data map[string]any, key, legacyKey string) effect.LastingType {
+	if _, ok := data[key]; !ok {
+		key = legacyKey
+	}
+	t, _ := effect.ByID(int(nbtconv.Int32(data, key)))
+	lasting, _ := t.(effect.LastingType)
+	return lasting
 }
 
 // EncodeNBT ...
 func (b Beacon) EncodeNBT() map[string]any {
 	m := map[string]any{
-		"id":     "Beacon",
-		"Levels": int32(b.level),
+		"id":        "Beacon",
+		"Levels":    int32(b.level),
+		"primary":   int32(0),
+		"secondary": int32(0),
 	}
 	if primary, ok := effect.ID(b.Primary); ok {
-		m["Primary"] = int32(primary)
+		m["primary"] = int32(primary)
 	}
 	if secondary, ok := effect.ID(b.Secondary); ok {
-		m["Secondary"] = int32(secondary)
+		m["secondary"] = int32(secondary)
 	}
 	return m
 }
@@ -129,11 +138,8 @@ func (b Beacon) recalculateLevel(pos cube.Pos, tx *world.Tx) int {
 
 // obstructed determines whether the beacon is currently obstructed.
 func (b Beacon) obstructed(pos cube.Pos, tx *world.Tx) bool {
-	// Fast obstructed light calculation.
-	if tx.SkyLight(pos.Side(cube.FaceUp)) == 15 {
-		return false
-	}
-	// Slow obstructed light calculation, if the fast way out didn't suffice.
+	// Skylight may still be cached after a block change. Check the actual column
+	// so placing an opaque block immediately stops the beacon's effect refresh.
 	return tx.HighestLightBlocker(pos.X(), pos.Z()) > pos[1]
 }
 
