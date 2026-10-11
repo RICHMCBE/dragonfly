@@ -507,6 +507,23 @@ func (s *Session) SendForm(f form.Form) {
 	})
 }
 
+// SendServerSettings sends a form as the server settings page of the client.
+func (s *Session) SendServerSettings(f form.Form) {
+	b, _ := json.Marshal(f)
+	h := s.handlers[packet.IDModalFormResponse].(*ModalFormResponseHandler)
+	id := h.currentID.Add(1)
+	h.mu.Lock()
+	if len(h.forms) > 10 {
+		for k := range h.forms {
+			delete(h.forms, k)
+			break
+		}
+	}
+	h.forms[id] = f
+	h.mu.Unlock()
+	s.writePacket(&packet.ServerSettingsResponse{FormID: id, FormData: b})
+}
+
 // CloseForm closes any forms that the player currently has open. If the player has no forms open, nothing
 // happens.
 func (s *Session) CloseForm() {
