@@ -582,15 +582,16 @@ func (srv *Server) createPlayer(id uuid.UUID, conn session.Conn, conf player.Con
 	srv.pwg.Add(1)
 
 	s := session.Config{
-		PacketProcessor:   srv.conf.PacketProcessor,
-		DisableScoreboard: srv.conf.DisableScoreboard,
-		Log:               srv.conf.Log,
-		MaxChunkRadius:    srv.conf.MaxChunkRadius,
-		EmoteChatMuted:    srv.conf.MuteEmoteChat,
-		JoinMessage:       srv.conf.JoinMessage,
-		QuitMessage:       srv.conf.QuitMessage,
-		HandleStop:        srv.handleSessionClose,
-		BlockRegistry:     w.BlockRegistry(),
+		CosmeticActorIdentifiers: srv.conf.CosmeticActorIdentifiers,
+		PacketProcessor:          srv.conf.PacketProcessor,
+		DisableScoreboard:        srv.conf.DisableScoreboard,
+		Log:                      srv.conf.Log,
+		MaxChunkRadius:           srv.conf.MaxChunkRadius,
+		EmoteChatMuted:           srv.conf.MuteEmoteChat,
+		JoinMessage:              srv.conf.JoinMessage,
+		QuitMessage:              srv.conf.QuitMessage,
+		HandleStop:               srv.handleSessionClose,
+		BlockRegistry:            w.BlockRegistry(),
 	}.New(conn)
 
 	conf.Name = conn.IdentityData().DisplayName
