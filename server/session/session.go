@@ -62,6 +62,7 @@ type Session struct {
 	entityRuntimeIDs map[*world.EntityHandle]uint64
 	entities         map[uint64]*world.EntityHandle
 	hiddenEntities   map[uuid.UUID]struct{}
+	cosmeticActors   map[uint64]struct{}
 
 	// heldSlot is the slot in the inventory that the controllable is holding.
 	heldSlot                     *uint32
@@ -160,9 +161,10 @@ const selfEntityRuntimeID = 1
 var errSelfRuntimeID = errors.New("invalid entity runtime ID: runtime ID for self must always be 1")
 
 type Config struct {
-	PacketProcessor   func() PacketProcessor
-	DisableScoreboard bool
-	Log               *slog.Logger
+	CosmeticActorIdentifiers []string
+	PacketProcessor          func() PacketProcessor
+	DisableScoreboard        bool
+	Log                      *slog.Logger
 
 	MaxChunkRadius int
 
@@ -665,6 +667,9 @@ type actorIdentifier struct {
 // sendAvailableEntities sends all registered entities to the player.
 func (s *Session) sendAvailableEntities(w *world.World) {
 	var identifiers []actorIdentifier
+	for _, id := range s.conf.CosmeticActorIdentifiers {
+		identifiers = append(identifiers, actorIdentifier{ID: id})
+	}
 	for _, t := range w.EntityRegistry().Types() {
 		identifiers = append(identifiers, actorIdentifier{ID: t.EncodeEntity()})
 	}
