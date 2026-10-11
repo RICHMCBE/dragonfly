@@ -126,4 +126,6 @@ type Controllable interface {
 	SetSkin(skin.Skin)
 
 	UpdateDiagnostics(Diagnostics)
+	// RequestServerSettings is called when the client opens the server settings page.
+	RequestServerSettings()
 }
