@@ -29,7 +29,9 @@ import (
 
 // Config contains options for starting a Minecraft server.
 type Config struct {
-	PacketProcessor func() session.PacketProcessor
+	// CosmeticActorIdentifiers announces client-only actor types without registering world entities.
+	CosmeticActorIdentifiers []string
+	PacketProcessor          func() session.PacketProcessor
 	// DisableScoreboard suppresses sidebar and scoreboard health HUD packets.
 	DisableScoreboard bool
 	// Log is the Logger to use for logging information. If nil, Log is set to
