@@ -106,7 +106,12 @@ func (s Stack) WithNBTValue(key string, value any) Stack {
 			s.item = decoded
 		}
 	}
-	return ReadNBT(copied, &s)
+	// ReadNBT applies Damage relative to the supplied stack. Rebuild the base
+	// first so changing a plugin tag cannot damage an already worn tool again.
+	base := s
+	base.damage = 0
+	base.unbreakable = false
+	return ReadNBT(copied, &base)
 }
 
 // NBTValue reads an original item tag without exposing mutable stack storage.
