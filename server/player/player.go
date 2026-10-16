@@ -41,6 +41,7 @@ import (
 )
 
 type playerData struct {
+	animationVariant  int32
 	allowFlight       bool
 	xuid              string
 	locale            language.Tag
