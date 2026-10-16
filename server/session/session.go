@@ -33,8 +33,9 @@ import (
 // Session handles incoming packets from connections and sends outgoing packets by providing a thin layer
 // of abstraction over direct packets. A Session basically 'controls' an entity.
 type Session struct {
-	conf           Config
-	once, connOnce sync.Once
+	cameraPresetsSent bool
+	conf              Config
+	once, connOnce    sync.Once
 
 	ent      *world.EntityHandle
 	conn     Conn
@@ -662,6 +663,9 @@ func (s *Session) writePacket(pk packet.Packet) {
 type actorIdentifier struct {
 	// ID is a unique namespaced identifier for the entity.
 	ID string `nbt:"id"`
+	// Bedrock's custom actor declaration includes an explicit behaviour ID,
+	// even when blank (the Customies client-only entity contract).
+	BehaviourID string `nbt:"bid"`
 }
 
 // sendAvailableEntities sends all registered entities to the player.
