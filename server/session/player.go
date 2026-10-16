@@ -488,9 +488,8 @@ func (s *Session) SendForm(f form.Form) {
 	b, _ := json.Marshal(f)
 
 	h := s.handlers[packet.IDModalFormResponse].(*ModalFormResponseHandler)
-	id := h.currentID.Add(1)
-
 	h.mu.Lock()
+	id := h.currentID.Add(1)
 	if len(h.forms) > 10 {
 		s.conf.Log.Debug("SendForm: more than 10 active forms: dropping an existing one")
 		for k := range h.forms {
@@ -511,8 +510,8 @@ func (s *Session) SendForm(f form.Form) {
 func (s *Session) SendServerSettings(f form.Form) {
 	b, _ := json.Marshal(f)
 	h := s.handlers[packet.IDModalFormResponse].(*ModalFormResponseHandler)
-	id := h.currentID.Add(1)
 	h.mu.Lock()
+	id := h.currentID.Add(1)
 	if len(h.forms) > 10 {
 		for k := range h.forms {
 			delete(h.forms, k)
@@ -527,6 +526,10 @@ func (s *Session) SendServerSettings(f form.Form) {
 // CloseForm closes any forms that the player currently has open. If the player has no forms open, nothing
 // happens.
 func (s *Session) CloseForm() {
+	h := s.handlers[packet.IDModalFormResponse].(*ModalFormResponseHandler)
+	h.mu.Lock()
+	h.currentID.Add(1) // Supersede any pending UserBusy retry.
+	h.mu.Unlock()
 	s.writePacket(&packet.ClientBoundCloseForm{})
 }
 
