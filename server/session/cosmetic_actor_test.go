@@ -22,6 +22,18 @@ func TestCosmeticActorIdentifierAnnounced(t *testing.T) {
 	if err := nbt.Unmarshal(p.SerialisedEntityIdentifiers, &data); err != nil {
 		t.Fatal(err)
 	}
+	var raw map[string]any
+	if err := nbt.Unmarshal(p.SerialisedEntityIdentifiers, &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range raw["idlist"].([]any) {
+		actor := row.(map[string]any)
+		if actor["id"] == "blf:dotori_draw_chest" {
+			if value, ok := actor["bid"]; !ok || value != "" {
+				t.Fatal("custom actor needs explicit empty behaviour id")
+			}
+		}
+	}
 	for _, id := range data.IDs {
 		if id.ID == "blf:dotori_draw_chest" {
 			return
