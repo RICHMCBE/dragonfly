@@ -18,6 +18,12 @@ type Form interface {
 	SubmitJSON(b []byte, submitter Submitter, tx *world.Tx) error
 }
 
+// BusyRetryer opts a form into bounded retries when the client reports UserBusy.
+// Each returned form must consume a retry; user-initiated closes never retry.
+type BusyRetryer interface {
+	RetryAfterBusy() (Form, bool)
+}
+
 // Custom represents a form that may be sent to a player and has fields that should be filled out by the
 // player that the form is sent to.
 type Custom struct {
