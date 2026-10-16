@@ -11,9 +11,25 @@ func (p *Player) SetFreeCamera(position, target mgl64.Vec3) {
 		p.session().SetFreeCamera(position, target)
 	}
 }
+func (p *Player) SetFreeCameraEased(position, target mgl64.Vec3, seconds float32) {
+	if p.session() != session.Nop {
+		p.session().SetFreeCameraEased(position, target, seconds)
+	}
+}
+func (p *Player) FadeCamera(in, hold, out float32) {
+	if p.session() != session.Nop {
+		p.session().FadeCamera(in, hold, out)
+	}
+}
 func (p *Player) ClearCamera() {
 	if p.session() != session.Nop {
 		p.session().ClearCamera()
+	}
+}
+
+func (p *Player) ShakeCamera(intensity, duration float32) {
+	if p.session() != session.Nop {
+		p.session().ShakeCamera(intensity, duration)
 	}
 }
 
