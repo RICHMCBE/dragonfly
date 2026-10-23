@@ -98,7 +98,7 @@ func (p Potato) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 		breakBlock(p, pos, tx)
 	} else if p.Growth < 7 && r.Float64() <= p.CalculateGrowthChance(pos, tx) {
 		p.Growth++
-		tx.SetBlock(pos, p, nil)
+		tx.SetBlock(pos, p, &world.SetOpts{NaturalGrowth: true})
 	}
 }
 
