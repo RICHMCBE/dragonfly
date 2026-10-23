@@ -69,7 +69,7 @@ func (b BeetrootSeeds) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 		breakBlock(b, pos, tx)
 	} else if b.Growth < 7 && r.IntN(3) > 0 && r.Float64() <= b.CalculateGrowthChance(pos, tx) {
 		b.Growth++
-		tx.SetBlock(pos, b, nil)
+		tx.SetBlock(pos, b, &world.SetOpts{NaturalGrowth: true})
 	}
 }
 
