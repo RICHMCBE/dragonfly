@@ -90,7 +90,7 @@ func (c Carrot) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 		breakBlock(c, pos, tx)
 	} else if c.Growth < 7 && r.Float64() <= c.CalculateGrowthChance(pos, tx) {
 		c.Growth++
-		tx.SetBlock(pos, c, nil)
+		tx.SetBlock(pos, c, &world.SetOpts{NaturalGrowth: true})
 	}
 }
 
