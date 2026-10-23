@@ -321,6 +321,9 @@ func (tx *Tx) highestObstructingBlock(x, z int) int {
 // SetOpts holds several parameters that may be set to disable updates in the
 // World of different kinds as a result of a call to SetBlock.
 type SetOpts struct {
+	// NaturalGrowth identifies changes made by crop random ticks. An optional
+	// handler may persist provenance before allowing the growth to take place.
+	NaturalGrowth bool
 	// DisableBlockUpdates makes SetBlock not update any neighbouring blocks as
 	// a result of the SetBlock call.
 	DisableBlockUpdates bool
@@ -358,6 +361,11 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 	}
 	if opts == nil {
 		opts = &SetOpts{}
+	}
+	if opts.NaturalGrowth {
+		if h, ok := w.Handler().(interface{ HandleNaturalGrowth(cube.Pos, Block) bool }); ok && !h.HandleNaturalGrowth(pos, b) {
+			return
+		}
 	}
 
 	x, y, z := uint8(pos[0]), int16(pos[1]), uint8(pos[2])
