@@ -2284,7 +2284,15 @@ func (p *Player) BreakBlock(pos cube.Pos) {
 		return
 	}
 	if durable, ok := held.Item().(item.Durable); ok {
-		p.SetHeldItems(p.damageItem(held, durable.DurabilityInfo().BreakDurability), left)
+		damage := durable.DurabilityInfo().BreakDurability
+		// Production bonuses apply only after a successful block break, never
+		// to combat, armour, gliding or general item use.
+		if h, ok := p.Handler().(interface {
+			HandleBlockToolDamage(*Player, cube.Pos, item.Stack, *int)
+		}); ok {
+			h.HandleBlockToolDamage(p, pos, held, &damage)
+		}
+		p.SetHeldItems(p.damageItem(held, damage), left)
 	}
 }
 
