@@ -55,7 +55,7 @@ func (p PumpkinSeeds) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 				case Farmland, Dirt, Grass:
 					p.Direction = direction
 					tx.SetBlock(pos, p, nil)
-					tx.SetBlock(stemPos, Pumpkin{}, nil)
+					tx.SetBlock(stemPos, Pumpkin{}, &world.SetOpts{NaturalGrowth: true})
 				}
 			}
 		}
