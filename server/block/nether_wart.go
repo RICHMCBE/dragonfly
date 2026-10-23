@@ -27,7 +27,7 @@ func (n NetherWart) HasLiquidDrops() bool {
 func (n NetherWart) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	if n.Age < 3 && r.Float64() < 0.1 {
 		n.Age++
-		tx.SetBlock(pos, n, nil)
+		tx.SetBlock(pos, n, &world.SetOpts{NaturalGrowth: true})
 	}
 }
 
