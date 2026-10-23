@@ -82,7 +82,7 @@ func (c CocoaBean) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *wo
 func (c CocoaBean) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	if c.Age < 2 && r.IntN(5) == 0 {
 		c.Age++
-		tx.SetBlock(pos, c, nil)
+		tx.SetBlock(pos, c, &world.SetOpts{NaturalGrowth: true})
 	}
 }
 
