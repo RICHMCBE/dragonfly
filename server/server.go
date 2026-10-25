@@ -584,6 +584,7 @@ func (srv *Server) createPlayer(id uuid.UUID, conn session.Conn, conf player.Con
 	s := session.Config{
 		CosmeticActorIdentifiers: srv.conf.CosmeticActorIdentifiers,
 		PacketProcessor:          srv.conf.PacketProcessor,
+		HandleUnhandledPacket:    srv.conf.HandleUnhandledPacket,
 		DisableScoreboard:        srv.conf.DisableScoreboard,
 		Log:                      srv.conf.Log,
 		MaxChunkRadius:           srv.conf.MaxChunkRadius,
