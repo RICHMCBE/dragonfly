@@ -32,6 +32,8 @@ type Config struct {
 	// CosmeticActorIdentifiers announces client-only actor types without registering world entities.
 	CosmeticActorIdentifiers []string
 	PacketProcessor          func() session.PacketProcessor
+	// HandleUnhandledPacket receives incoming packets the session has no handler for.
+	HandleUnhandledPacket func(packet.Packet, *world.Tx, session.Controllable)
 	// DisableScoreboard suppresses sidebar and scoreboard health HUD packets.
 	DisableScoreboard bool
 	// Log is the Logger to use for logging information. If nil, Log is set to
