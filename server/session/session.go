@@ -177,6 +177,9 @@ type Config struct {
 	// nil if the Controllable could not be restored to any world, such as when
 	// both its current world and respawn destination closed during teardown.
 	HandleStop func(*world.Tx, Controllable)
+	// HandleUnhandledPacket, if set, receives incoming packets that have no
+	// handler registered, such as data-driven UI responses.
+	HandleUnhandledPacket func(packet.Packet, *world.Tx, Controllable)
 	// BlockRegistry overrides the registry used for network serialization. If nil, world.DefaultBlockRegistry is used.
 	BlockRegistry world.BlockRegistry
 }
@@ -592,6 +595,10 @@ func (s *Session) ChunkRadius() int32 {
 func (s *Session) handlePacket(pk packet.Packet, tx *world.Tx, c Controllable) (err error) {
 	handler, ok := s.handlers[pk.ID()]
 	if !ok {
+		if s.conf.HandleUnhandledPacket != nil {
+			s.conf.HandleUnhandledPacket(pk, tx, c)
+			return nil
+		}
 		s.conf.Log.Debug("unhandled packet", "packet", fmt.Sprintf("%T", pk), "data", fmt.Sprintf("%+v", pk)[1:])
 		return nil
 	}
@@ -646,6 +653,12 @@ func (s *Session) registerHandlers() {
 		packet.IDServerBoundDiagnostics:    &ServerBoundDiagnosticsHandler{},
 		packet.IDServerSettingsRequest:     &ServerSettingsRequestHandler{},
 	}
+}
+
+// WritePacket writes a packet to the session's connection if it is not Nop.
+// It is intended for protocol features the session does not model itself.
+func (s *Session) WritePacket(pk packet.Packet) {
+	s.writePacket(pk)
 }
 
 // writePacket writes a packet to the session's connection if it is not Nop.
