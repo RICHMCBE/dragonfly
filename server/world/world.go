@@ -363,6 +363,12 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 		opts = &SetOpts{}
 	}
 	if opts.NaturalGrowth {
+		// The Tx-aware hook can read surrounding blocks (such as the soil).
+		if h, ok := w.Handler().(interface {
+			HandleNaturalGrowthTx(*Tx, cube.Pos, Block) bool
+		}); ok && !h.HandleNaturalGrowthTx(tx, pos, b) {
+			return
+		}
 		if h, ok := w.Handler().(interface{ HandleNaturalGrowth(cube.Pos, Block) bool }); ok && !h.HandleNaturalGrowth(pos, b) {
 			return
 		}
