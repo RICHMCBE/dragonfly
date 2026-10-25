@@ -37,6 +37,7 @@ import (
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/google/uuid"
+	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"golang.org/x/text/language"
 )
 
@@ -3523,6 +3524,12 @@ func (p *Player) Data() Config {
 		FallDistance:        p.fallDistance,
 		Effects:             p.Effects(),
 	}
+}
+
+// WritePacket sends a raw packet to the player's client. It does nothing if the
+// player has no network session.
+func (p *Player) WritePacket(pk packet.Packet) {
+	p.session().WritePacket(pk)
 }
 
 // session returns the network session of the player. If it has one, it is returned. If not, a no-op session
