@@ -51,6 +51,11 @@ type playerData struct {
 	absorptionHealth  float64
 	scale             float64
 
+	// mount is the entity the player sits on (see ride.go) and seat the offset of the seat from
+	// that entity's position.
+	mount *world.EntityHandle
+	seat  mgl64.Vec3
+
 	gameMode world.GameMode
 	skin     skin.Skin
 	s        *session.Session
@@ -947,6 +952,9 @@ func (p *Player) DeathPosition() (mgl64.Vec3, world.Dimension, bool) {
 
 // kill kills the player, clearing its inventories and resetting it to its base state.
 func (p *Player) kill(src world.DamageSource) {
+	if p.mount != nil {
+		p.Dismount()
+	}
 	for _, viewer := range p.viewers() {
 		viewer.ViewEntityAction(p, entity.DeathAction{})
 	}
@@ -1183,6 +1191,11 @@ func (p *Player) StopSprinting() {
 // anything.
 // If the player is sprinting while StartSneaking is called, the sprinting is stopped.
 func (p *Player) StartSneaking() {
+	// Sneaking is how a seated player stands up, as in vanilla.
+	if p.mount != nil {
+		p.Dismount()
+		return
+	}
 	if p.sneaking {
 		return
 	}
@@ -2374,6 +2387,9 @@ func (p *Player) Teleport(pos mgl64.Vec3) {
 	if p.Handler().HandleTeleport(ctx, pos); ctx.Cancelled() {
 		return
 	}
+	if p.mount != nil {
+		p.Dismount()
+	}
 	p.forceTeleport(pos)
 }
 
@@ -3471,6 +3487,10 @@ func (p *Player) close(msg string) {
 }
 
 func (p *Player) quit(msg string) {
+	// Leave the seat first so the saved position is beside the seat, not inside the mount.
+	if p.mount != nil {
+		p.Dismount()
+	}
 	p.h.HandleQuit(p)
 	p.h = NopHandler{}
 
