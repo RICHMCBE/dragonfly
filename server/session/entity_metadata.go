@@ -44,6 +44,12 @@ func (s *Session) parseEntityMetadata(e world.Entity) protocol.EntityMetadata {
 }
 
 func (s *Session) addSpecificMetadata(e any, m protocol.EntityMetadata) {
+	if r, ok := e.(seatedRider); ok {
+		if seat, riding := r.SeatOffset(); riding {
+			m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagRiding)
+			m[protocol.EntityDataKeySeatOffset] = vec64To32(seat)
+		}
+	}
 	if sn, ok := e.(sneaker); ok && sn.Sneaking() {
 		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagSneaking)
 	}
@@ -224,6 +230,12 @@ func writeNameTagMetadata(m protocol.EntityMetadata, nameTag string, alwaysShow 
 
 type sneaker interface {
 	Sneaking() bool
+}
+
+// seatedRider is an entity that may sit on another entity (player.Player).
+type seatedRider interface {
+	SeatOffset() (mgl64.Vec3, bool)
+	Mounted() (*world.EntityHandle, bool)
 }
 
 type sprinter interface {
