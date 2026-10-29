@@ -10,6 +10,8 @@ type Properties struct {
 	// CollisionBox represents the bounding box of the block that the player can collide with. This cannot exceed the
 	// position of the current block in the world, otherwise it will be cut off at the edge.
 	CollisionBox cube.BBox
+	// NoCollision disables the client collision box, for plants players walk through. It wins over CollisionBox.
+	NoCollision bool
 	// Cube determines whether the block should inherit the default cube geometry. This will only be considered if the
 	// Geometry field is empty.
 	Cube bool
