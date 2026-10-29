@@ -41,8 +41,18 @@ type FarmlandMoistureHandler interface {
 	HandleFarmlandMoisture(pos cube.Pos, f Farmland, r *rand.Rand) (int, bool)
 }
 
+// FarmlandTickHandler is told about every farmland random tick before the
+// moisture is handled, so a world handler can act on the crop above (for
+// example, crops wilting on farmland left dry).
+type FarmlandTickHandler interface {
+	HandleFarmlandTickTx(tx *world.Tx, pos cube.Pos, f Farmland, r *rand.Rand)
+}
+
 // RandomTick ...
 func (f Farmland) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
+	if h, ok := tx.World().Handler().(FarmlandTickHandler); ok {
+		h.HandleFarmlandTickTx(tx, pos, f, r)
+	}
 	if h, ok := tx.World().Handler().(FarmlandMoistureHandler); ok {
 		if hydration, handled := h.HandleFarmlandMoisture(pos, f, r); handled {
 			if hydration <= 0 && f.Hydration <= 0 {
