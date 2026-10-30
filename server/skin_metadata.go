@@ -14,7 +14,7 @@ import (
 func preserveLoginSkin(s *skin.Skin, d login.ClientData) {
 	decode := func(v string) []byte { b, _ := base64.StdEncoding.DecodeString(v); return b }
 	p := protocol.Skin{
-		SkinID: d.SkinID, FullID: d.SkinID, PlayFabID: d.PlayFabID,
+		SkinID: d.SkinID, FullID: d.SkinID,
 		SkinResourcePatch: decode(d.SkinResourcePatch), SkinGeometry: s.Model,
 		SkinImageWidth: uint32(d.SkinImageWidth), SkinImageHeight: uint32(d.SkinImageHeight), SkinData: s.Pix,
 		CapeImageWidth: uint32(d.CapeImageWidth), CapeImageHeight: uint32(d.CapeImageHeight), CapeData: s.Cape.Pix, CapeID: d.CapeID,
