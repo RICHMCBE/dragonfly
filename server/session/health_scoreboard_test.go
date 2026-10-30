@@ -184,3 +184,45 @@ func TestHealthHUDWithChangingInfoRowCount(t *testing.T) {
 		}
 	}
 }
+
+// The info row is a third reserved row: it keeps across health updates, health keeps across info
+// updates, and an empty info text removes only that row.
+func TestInfoHUDRow(t *testing.T) {
+	s := &Session{packets: make(chan packet.Packet, 100), closeBackground: make(chan struct{})}
+	name := ""
+	lines := []string{}
+	s.currentScoreboard.Store(&name)
+	s.currentLines.Store(&lines)
+	rows := func() (added, removed map[int64]string) {
+		added, removed = map[int64]string{}, map[int64]string{}
+		for len(s.packets) > 0 {
+			if pk, ok := (<-s.packets).(*packet.SetScore); ok {
+				for _, e := range pk.Entries {
+					if e.IdentityType == protocol.ScoreboardIdentityRemove {
+						removed[e.EntryID] = ""
+					} else {
+						added[e.EntryID] = e.DisplayName
+					}
+				}
+			}
+		}
+		return
+	}
+	// Info before health: only the info row.
+	s.SendInfoHUD("§C§S§Qa가을 5일째")
+	if added, _ := rows(); len(added) != 1 || added[1003] != "§C§S§Qa가을 5일째" {
+		t.Fatal(added)
+	}
+	s.SendHealthHUD("§C§S§H§Bp100", "§C§S§H§T20/20")
+	if added, _ := rows(); len(added) != 3 || added[1003] != "§C§S§Qa가을 5일째" || added[1001] != "§C§S§H§Bp100" {
+		t.Fatal(added)
+	}
+	s.SendInfoHUD("§C§S§Qw겨울 1일째")
+	if added, _ := rows(); added[1003] != "§C§S§Qw겨울 1일째" || added[1002] != "§C§S§H§T20/20" {
+		t.Fatal(added)
+	}
+	s.SendInfoHUD("")
+	if added, removed := rows(); len(added) != 2 || added[1003] != "" || len(removed) != 3 {
+		t.Fatal(added, removed)
+	}
+}
