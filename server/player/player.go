@@ -322,6 +322,12 @@ func (p *Player) SendHealthHUD(bar, text string) {
 	p.session().SendHealthHUD(bar, text)
 }
 
+// SendInfoHUD sets the reserved info row next to the health HUD rows, read by a resource pack HUD
+// element by its own prefix. An empty text removes the row.
+func (p *Player) SendInfoHUD(text string) {
+	p.session().SendInfoHUD(text)
+}
+
 // RemoveScoreboard removes any scoreboard currently present on the screen of the player. Nothing happens if
 // the player has no scoreboard currently active.
 func (p *Player) RemoveScoreboard() {
