@@ -44,9 +44,11 @@ type Session struct {
 
 	currentScoreboard     atomic.Pointer[string]
 	currentLines          atomic.Pointer[[]string]
-	healthHUDLines        atomic.Pointer[[2]string]
+	healthHUDLines        atomic.Pointer[[3]string]
+	healthHUDMu           sync.Mutex
 	scoreboardDisplayName string
 	healthHUDSent         bool
+	infoHUDSent           bool
 
 	chunkLoader                 *world.Loader
 	chunkRadius, maxChunkRadius int32
