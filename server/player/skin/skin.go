@@ -12,9 +12,8 @@ type Skin struct {
 	original *protocolSnapshot
 	w, h     int
 	// Persona specifies if the skin uses the persona skin system.
-	Persona   bool
-	PlayFabID string
-	FullID    string
+	Persona bool
+	FullID  string
 
 	// Pix holds the raw pixel data of the skin. This is an RGBA byte slice, meaning that every first byte is
 	// a Red value, the second a Green value, the third a Blue value and the fourth an Alpha value.
