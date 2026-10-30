@@ -140,7 +140,7 @@ func (s *Session) removeScoreboardObjective() {
 	if name := *s.currentScoreboard.Load(); name != "" {
 		s.writePacket(&packet.RemoveObjective{ObjectiveName: name})
 	}
-	s.healthHUDSent = false
+	s.healthHUDSent, s.infoHUDSent = false, false
 	s.scoreboardDisplayName = ""
 	var name string
 	var lines []string
@@ -206,14 +206,39 @@ func (s *Session) RemoveScoreboard() {
 	s.sendHealthHUDRows()
 }
 
-// SendHealthHUD reserves two sidebar rows. Normal sidebar users should keep
-// at most 13 rows so that the combined display fits Bedrock's 15-row sidebar.
+// SendHealthHUD reserves two sidebar rows (and SendInfoHUD a third). Normal sidebar users should
+// keep at most 12 rows so that the combined display fits Bedrock's 15-row sidebar.
 // Updates use positive IDs outside the ordinary 0..14 row range.
 func (s *Session) SendHealthHUD(bar, text string) {
 	if s == Nop || s.conf.DisableScoreboard {
 		return
 	}
-	s.healthHUDLines.Store(&[2]string{bar, text})
+	s.healthHUDMu.Lock()
+	lines := [3]string{bar, text}
+	if old := s.healthHUDLines.Load(); old != nil {
+		lines[2] = old[2]
+	}
+	s.healthHUDLines.Store(&lines)
+	s.healthHUDMu.Unlock()
+	s.ensureHealthHUDObjective()
+	s.sendHealthHUDRows()
+}
+
+// SendInfoHUD sets a third reserved sidebar row next to the health HUD, for a resource pack HUD
+// element that reads it by a prefix of its own (such as the server season). An empty text
+// removes the row.
+func (s *Session) SendInfoHUD(text string) {
+	if s == Nop || s.conf.DisableScoreboard {
+		return
+	}
+	s.healthHUDMu.Lock()
+	var lines [3]string
+	if old := s.healthHUDLines.Load(); old != nil {
+		lines = *old
+	}
+	lines[2] = text
+	s.healthHUDLines.Store(&lines)
+	s.healthHUDMu.Unlock()
 	s.ensureHealthHUDObjective()
 	s.sendHealthHUDRows()
 }
@@ -237,21 +262,30 @@ func (s *Session) sendHealthHUDRows() {
 	if name == "" {
 		return
 	}
-	entries := make([]protocol.ScoreboardEntry, 0, 2)
+	entries := make([]protocol.ScoreboardEntry, 0, 3)
 	for i, line := range lines {
+		// The health rows are only sent once the health HUD was set, the info row while it has
+		// text.
+		if line == "" && (i == 2 || lines[0] == "") {
+			continue
+		}
 		// Scores only determine row ordering; HP is carried in the name payload.
 		score := int32(14 + i)
 		entries = append(entries, protocol.ScoreboardEntry{EntryID: int64(1001 + i), ObjectiveName: name, Score: score, IdentityType: protocol.ScoreboardIdentityFakePlayer, DisplayName: line})
 	}
 	// Removing before adding allows clients to replace changed fake-player names.
 	remove := &packet.SetScore{}
-	for _, entry := range entries {
-		entry.IdentityType = protocol.ScoreboardIdentityRemove
-		remove.Entries = append(remove.Entries, entry)
+	for i := range lines {
+		if i < 2 && s.healthHUDSent || i == 2 && s.infoHUDSent {
+			remove.Entries = append(remove.Entries, protocol.ScoreboardEntry{EntryID: int64(1001 + i), ObjectiveName: name, Score: int32(14 + i), IdentityType: protocol.ScoreboardIdentityRemove})
+		}
 	}
-	if s.healthHUDSent {
+	if len(remove.Entries) > 0 {
 		s.writePacket(remove)
 	}
-	s.writePacket(&packet.SetScore{Entries: entries})
-	s.healthHUDSent = true
+	if len(entries) > 0 {
+		s.writePacket(&packet.SetScore{Entries: entries})
+	}
+	s.healthHUDSent = lines[0] != ""
+	s.infoHUDSent = lines[2] != ""
 }
