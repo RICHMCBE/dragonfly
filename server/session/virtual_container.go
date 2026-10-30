@@ -74,8 +74,6 @@ func (s *Session) OpenVirtualContainer(tx *world.Tx, pos cube.Pos, title string,
 	return nil
 }
 
-func (s *Session) CloseContainer(tx *world.Tx) { s.closeCurrentContainer(tx, false) }
-
 func (s *Session) closeVirtualContainer(tx *world.Tx, clientRequested bool) bool {
 	menu := s.virtualContainer
 	if menu == nil {
