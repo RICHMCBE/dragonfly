@@ -56,4 +56,4 @@ require (
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
 
-replace github.com/sandertv/gophertunnel => github.com/RICHMCBE/gophertunnel v1.62.0-dotori.1
+replace github.com/sandertv/gophertunnel => github.com/RICHMCBE/gophertunnel v1.63.0-dotori.1
