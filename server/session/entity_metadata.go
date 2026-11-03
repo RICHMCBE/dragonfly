@@ -109,6 +109,9 @@ func (s *Session) addSpecificMetadata(e any, m protocol.EntityMetadata) {
 	if sc, ok := e.(scaled); ok {
 		m[protocol.EntityDataKeyScale] = float32(sc.Scale())
 	}
+	if h, ok := e.(hitboxed); ok {
+		m[protocol.EntityDataKeyHitBox] = hitboxNBT(h.Hitboxes())
+	}
 	if t, ok := e.(tnt); ok {
 		m[protocol.EntityDataKeyFuseTime] = int32(t.Fuse().Milliseconds() / 50)
 		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagIgnited)
@@ -274,6 +277,27 @@ type invisible interface {
 
 type scaled interface {
 	Scale() float64
+}
+
+// hitboxed is an entity whose click area differs from its bounding box. The client sizes an
+// entity's shadow from the bounding box width, so a wide model can keep a narrow box (a small
+// shadow) and still be clicked anywhere on it.
+type hitboxed interface {
+	Hitboxes() []cube.BBox
+}
+
+// hitboxNBT encodes boxes, relative to the entity's position, as the HitBox actor data.
+func hitboxNBT(boxes []cube.BBox) map[string]any {
+	list := make([]any, 0, len(boxes))
+	for _, b := range boxes {
+		lo, hi := b.Min(), b.Max()
+		list = append(list, map[string]any{
+			"MinX": float32(lo[0]), "MinY": float32(lo[1]), "MinZ": float32(lo[2]),
+			"MaxX": float32(hi[0]), "MaxY": float32(hi[1]), "MaxZ": float32(hi[2]),
+			"PivotX": float32((lo[0] + hi[0]) / 2), "PivotY": float32(lo[1]), "PivotZ": float32((lo[2] + hi[2]) / 2),
+		})
+	}
+	return map[string]any{"Hitboxes": list}
 }
 
 type owned interface {
