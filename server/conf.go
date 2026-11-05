@@ -262,6 +262,13 @@ type UserConfig struct {
 			// connections use. A single port is shared by all connections. If
 			// empty, the operating system picks the ports.
 			UDPPorts string
+			// PublicIP is the address players reach UDPPorts on, for a server
+			// behind NAT or in a container whose own address they cannot reach.
+			// If empty, the addresses of the local interfaces are advertised.
+			PublicIP string
+			// TLSForward is the address TLS connections to the signaling port are
+			// handed to, for a server with a certificate. Plain HTTP stays here.
+			TLSForward string
 		}
 	}
 	Server struct {
