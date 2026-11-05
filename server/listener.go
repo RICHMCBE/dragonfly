@@ -161,7 +161,7 @@ func (uc UserConfig) netherNetListenerFunc(conf Config) (Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse UDP port range: %w", err)
 	}
-	return NetherNetConfig{Address: address, Key: key, Domain: nn.Domain, UDPPorts: r}.Listener(conf)
+	return NetherNetConfig{Address: address, Key: key, Domain: nn.Domain, UDPPorts: r, PublicIP: nn.PublicIP, TLSForward: nn.TLSForward}.Listener(conf)
 }
 
 // ListenNetwork returns a Listener accepting connections for conf over any
@@ -210,6 +210,12 @@ type NetherNetConfig struct {
 	// UDPPorts is the UDP port range used for player connections. See PortRange
 	// for how single ports and zero bounds behave.
 	UDPPorts PortRange
+	// PublicIP replaces the local addresses advertised to players, for a server whose
+	// UDPPorts are forwarded from this address. If empty, local addresses are advertised.
+	PublicIP string
+	// TLSForward is the address TLS connections to Address are handed to unchanged, for a
+	// server holding a certificate. If empty, the endpoint only speaks plain HTTP.
+	TLSForward string
 }
 
 // parsePortRange parses "port" or "min-max" as a PortRange. An empty string
@@ -290,7 +296,9 @@ func (nc NetherNetConfig) Listener(conf Config) (Listener, error) {
 	var deferred closeFuncs
 	settingEngine := webrtc.SettingEngine{}
 	if ports := nc.UDPPorts; ports.Min != 0 && ports.Min == ports.Max {
-		mux, err := ice.NewMultiUDPMuxFromPort(int(ports.Min))
+		// A link-local address cannot be bound without care for its zone, and is no use to players.
+		keep := func(ip net.IP) bool { return !ip.IsLinkLocalUnicast() }
+		mux, err := ice.NewMultiUDPMuxFromPort(int(ports.Min), ice.UDPMuxFromPortWithIPFilter(keep))
 		if err != nil {
 			return nil, fmt.Errorf("allocate UDP mux: %w", err)
 		}
@@ -298,6 +306,13 @@ func (nc NetherNetConfig) Listener(conf Config) (Listener, error) {
 		settingEngine.SetICEUDPMux(mux)
 	} else if err := settingEngine.SetEphemeralUDPPortRange(ports.Min, ports.Max); err != nil {
 		return nil, fmt.Errorf("configure ephemeral udp port range: %w", err)
+	}
+	if nc.PublicIP != "" {
+		rule := webrtc.ICEAddressRewriteRule{External: []string{nc.PublicIP}, AsCandidateType: webrtc.ICECandidateTypeHost}
+		if err := settingEngine.SetICEAddressRewriteRules(rule); err != nil {
+			_ = deferred.Close()
+			return nil, fmt.Errorf("configure public IP: %w", err)
+		}
 	}
 	lcfg := nethernet.ListenConfig{
 		API:            webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine)),
@@ -322,6 +337,9 @@ func (nc NetherNetConfig) Listener(conf Config) (Listener, error) {
 	if err != nil {
 		_ = deferred.Close()
 		return nil, fmt.Errorf("listen NetherNet HTTP: %w", err)
+	}
+	if nc.TLSForward != "" {
+		tcp = forwardTLS(tcp, nc.TLSForward, conf.Log.With("net origin", "nethernet"))
 	}
 	// Once httpServer.Serve takes ownership of tcp below, closing httpServer is
 	// what closes tcp: closing tcp itself as well would race Serve releasing it
