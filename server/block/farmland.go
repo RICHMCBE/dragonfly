@@ -37,6 +37,8 @@ func (f Farmland) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 // FarmlandMoistureHandler lets a world handler own farmland moisture (for
 // example, farmland that only players can water). It returns the new
 // hydration and whether it handled the tick; unhandled ticks stay vanilla.
+// A negative hydration leaves the farmland as it is: dry farmland with nothing
+// planted then does not turn back to dirt on that tick.
 type FarmlandMoistureHandler interface {
 	HandleFarmlandMoisture(pos cube.Pos, f Farmland, r *rand.Rand) (int, bool)
 }
@@ -55,6 +57,9 @@ func (f Farmland) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	}
 	if h, ok := tx.World().Handler().(FarmlandMoistureHandler); ok {
 		if hydration, handled := h.HandleFarmlandMoisture(pos, f, r); handled {
+			if hydration < 0 {
+				return
+			}
 			if hydration <= 0 && f.Hydration <= 0 {
 				if _, cropAbove := tx.Block(pos.Side(cube.FaceUp)).(Crop); !cropAbove {
 					tx.SetBlock(pos, Dirt{}, nil)
