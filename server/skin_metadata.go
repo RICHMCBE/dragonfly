@@ -29,7 +29,7 @@ func preserveLoginSkin(s *skin.Skin, d login.ClientData) {
 	for _, a := range d.AnimatedImageData {
 		p.Animations = append(p.Animations, protocol.SkinAnimation{ImageWidth: uint32(a.ImageWidth), ImageHeight: uint32(a.ImageHeight), ImageData: decode(a.Image), AnimationType: uint32(a.Type), FrameCount: float32(a.Frames), ExpressionType: uint32(a.AnimationExpression)})
 	}
-	types := []string{"unknown", "skeleton", "body", "skin", "bottom", "feet", "dress", "top", "high_pants", "hands", "outerwear", "facial_hair", "mouth", "eyes", "hair", "hood", "back", "face_accessory", "head", "legs", "left_leg", "right_leg", "arms", "left_arm", "right_arm", "capes", "classic_skin", "emote", "unsupported"}
+	types := []string{"unknown", "skeleton", "body", "skin", "bottom", "feet", "dress", "top", "high_pants", "hands", "outerwear", "facial_hair", "mouth", "eyes", "hair", "hood", "back", "face_accessory", "head", "legs", "left_leg", "right_leg", "arms", "left_arm", "right_arm", "capes", "classic_skin", "emote", "coco", "unsupported"}
 	for _, piece := range d.PersonaPieces {
 		kind := strings.TrimPrefix(piece.PieceType, "persona_")
 		if kind == "hand" {
