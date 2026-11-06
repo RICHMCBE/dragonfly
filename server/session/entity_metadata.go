@@ -119,6 +119,9 @@ func (s *Session) addSpecificMetadata(e any, m protocol.EntityMetadata) {
 	if nameTag, alwaysShow, ok := nameTagState(e); ok {
 		writeNameTagMetadata(m, nameTag, alwaysShow)
 	}
+	if v, ok := e.(markVariant); ok {
+		m[protocol.EntityDataKeyMarkVariant] = v.MarkVariant()
+	}
 	if sc, ok := e.(scoreTag); ok {
 		m[protocol.EntityDataKeyScore] = sc.ScoreTag()
 	}
@@ -306,6 +309,10 @@ type owned interface {
 
 type named interface {
 	NameTag() string
+}
+
+type markVariant interface {
+	MarkVariant() int32
 }
 
 type alwaysShowNameTag interface {
