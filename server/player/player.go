@@ -123,6 +123,8 @@ type playerData struct {
 // Player is an implementation of a player entity. It has methods that implement the behaviour that players
 // need to play in the world.
 type Player struct {
+	markVariant int32
+
 	tx     *world.Tx
 	handle *world.EntityHandle
 	data   *world.EntityData
@@ -195,6 +197,18 @@ func (p *Player) Addr() net.Addr {
 		return nil
 	}
 	return p.session().Addr()
+}
+
+// MarkVariant returns the mark variant of the Player, which resource packs read with
+// query.mark_variant.
+func (p *Player) MarkVariant() int32 {
+	return p.markVariant
+}
+
+// SetMarkVariant changes the mark variant shown to viewers of the Player.
+func (p *Player) SetMarkVariant(v int32) {
+	p.markVariant = v
+	p.updateState()
 }
 
 // Skin returns the skin that a player is currently using. This skin will be visible to other players
