@@ -43,6 +43,7 @@ import (
 
 type playerData struct {
 	animationVariant  int32
+	markVariant       int32
 	allowFlight       bool
 	xuid              string
 	locale            language.Tag
@@ -123,8 +124,6 @@ type playerData struct {
 // Player is an implementation of a player entity. It has methods that implement the behaviour that players
 // need to play in the world.
 type Player struct {
-	markVariant int32
-
 	tx     *world.Tx
 	handle *world.EntityHandle
 	data   *world.EntityData
