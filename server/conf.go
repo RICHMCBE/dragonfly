@@ -269,6 +269,10 @@ type UserConfig struct {
 			// TLSForward is the address TLS connections to the signaling port are
 			// handed to, for a server with a certificate. Plain HTTP stays here.
 			TLSForward string
+			// TLSCertFile and TLSKeyFile are a PEM certificate and key the signaling
+			// port answers HTTPS with itself, reloaded when the files change. They take
+			// precedence over TLSForward. Plain HTTP stays on the same port.
+			TLSCertFile, TLSKeyFile string
 		}
 	}
 	Server struct {
