@@ -82,7 +82,9 @@ type World struct {
 	// be removed from the map.
 	scheduledUpdates *scheduledTickQueue
 	redstone         *redstoneEngine
-	neighbourUpdates []neighbourUpdate
+	// redstoneRuntimeIDs caches whether each block runtime ID takes part in redstone (redstoneNearby).
+	redstoneRuntimeIDs map[uint32]bool
+	neighbourUpdates   []neighbourUpdate
 
 	viewerMu sync.Mutex
 	viewers  map[*Loader]Viewer
@@ -457,7 +459,8 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 	if !opts.DisableBlockUpdates {
 		w.doBlockUpdatesAround(pos)
 	}
-	if !opts.DisableRedstoneUpdates {
+	// A change with no redstone in reach (crops growing, farmland drying) would compile an empty graph.
+	if !opts.DisableRedstoneUpdates && (redstoneAfterRelevant || isRedstoneRelevant(oldBlock) || w.redstoneNearby(pos)) {
 		w.redstone.invalidateAroundBlockChange(pos, oldBlock, b, RedstoneUpdateCauseBlockUpdate, w.Range())
 	}
 }
@@ -629,7 +632,9 @@ func (tx *Tx) setLiquid(pos cube.Pos, b Liquid) {
 	if b == nil {
 		w.removeLiquids(c, pos)
 		w.doBlockUpdatesAround(pos)
-		w.redstone.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, w.Range())
+		if w.redstoneNearby(pos) {
+			w.redstone.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, w.Range())
+		}
 		return
 	}
 	x, y, z := uint8(pos[0]), int16(pos[1]), uint8(pos[2])
@@ -653,7 +658,9 @@ func (tx *Tx) setLiquid(pos cube.Pos, b Liquid) {
 	c.modified = true
 
 	w.doBlockUpdatesAround(pos)
-	w.redstone.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, w.Range())
+	if w.redstoneNearby(pos) {
+		w.redstone.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, w.Range())
+	}
 }
 
 // removeLiquids removes any liquid blocks that may be present at a specific
