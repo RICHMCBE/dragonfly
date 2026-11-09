@@ -161,7 +161,7 @@ func (uc UserConfig) netherNetListenerFunc(conf Config) (Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse UDP port range: %w", err)
 	}
-	return NetherNetConfig{Address: address, Key: key, Domain: nn.Domain, UDPPorts: r, PublicIP: nn.PublicIP, TLSForward: nn.TLSForward}.Listener(conf)
+	return NetherNetConfig{Address: address, Key: key, Domain: nn.Domain, UDPPorts: r, PublicIP: nn.PublicIP, TLSForward: nn.TLSForward, TLSCertFile: nn.TLSCertFile, TLSKeyFile: nn.TLSKeyFile}.Listener(conf)
 }
 
 // ListenNetwork returns a Listener accepting connections for conf over any
@@ -186,8 +186,9 @@ func ListenNetwork(conf Config, network minecraft.Network, address string) (List
 // RakNet listening while clients may fall back to it, and make sure every probed port
 // answers or refuses quickly: one that silently drops packets delays every join.
 type NetherNetConfig struct {
-	// Address is the TCP address the HTTP signaling endpoint is served on. HTTPS should
-	// be terminated by a reverse proxy.
+	// Address is the TCP address the HTTP signaling endpoint is served on. HTTPS is
+	// answered on the same address with TLSCertFile and TLSKeyFile, or by the server at
+	// TLSForward.
 	Address string
 	// Key identifies the listener to players connecting over plain HTTP. If nil, a
 	// temporary key is generated, causing clients using Trust On First Use (TOFU) to
@@ -197,8 +198,8 @@ type NetherNetConfig struct {
 	// over plain HTTP. If empty, "self" is used.
 	Domain string
 	// HTTPServer optionally configures the server used to serve the signaling endpoint.
-	// Its Handler is set by Listener; TLSConfig is ignored because the endpoint is served
-	// as plaintext HTTP with HTTPS terminated by a reverse proxy. All other fields may be
+	// Its Handler is set by Listener; TLSConfig is ignored because TLS, when used, is
+	// handled by TLSCertFile/TLSKeyFile or TLSForward. All other fields may be
 	// set freely. If nil, a server with 5s/10s/30s read-header/read/idle timeouts is used.
 	HTTPServer *http.Server
 	// Credentials optionally supplies ICE (STUN/TURN) servers to the signaling handler.
@@ -216,6 +217,10 @@ type NetherNetConfig struct {
 	// TLSForward is the address TLS connections to Address are handed to unchanged, for a
 	// server holding a certificate. If empty, the endpoint only speaks plain HTTP.
 	TLSForward string
+	// TLSCertFile and TLSKeyFile are a PEM certificate and key Address answers HTTPS
+	// with itself, next to plain HTTP on the same port. The files are checked for a
+	// renewal every minute. If set, they take precedence over TLSForward.
+	TLSCertFile, TLSKeyFile string
 }
 
 // parsePortRange parses "port" or "min-max" as a PortRange. An empty string
@@ -338,7 +343,15 @@ func (nc NetherNetConfig) Listener(conf Config) (Listener, error) {
 		_ = deferred.Close()
 		return nil, fmt.Errorf("listen NetherNet HTTP: %w", err)
 	}
-	if nc.TLSForward != "" {
+	if nc.TLSCertFile != "" || nc.TLSKeyFile != "" {
+		certs, err := newCertificateFiles(nc.TLSCertFile, nc.TLSKeyFile, conf.Log.With("net origin", "nethernet"))
+		if err != nil {
+			_ = tcp.Close()
+			_ = deferred.Close()
+			return nil, err
+		}
+		tcp = terminateTLS(tcp, certs.tlsConfig(), conf.Log.With("net origin", "nethernet"))
+	} else if nc.TLSForward != "" {
 		tcp = forwardTLS(tcp, nc.TLSForward, conf.Log.With("net origin", "nethernet"))
 	}
 	// Once httpServer.Serve takes ownership of tcp below, closing httpServer is
