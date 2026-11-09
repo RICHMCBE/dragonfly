@@ -194,6 +194,55 @@ func (e *redstoneEngine) invalidateAroundBlockChange(pos cube.Pos, before, after
 	e.invalidateAroundWith(pos, d, r)
 }
 
+// redstoneReach is how far from a change redstone can care about it. A graph compiled from a change and
+// its dirty neighbours reaches at most 3 blocks out (neighbour, conductor, receiver); one more keeps those
+// neighbours strictly farther than any other change from the nodes it compiles.
+const redstoneReach = 4
+
+// redstoneNearby reports whether a loaded sub chunk overlapping the cube of redstoneReach blocks around
+// pos holds a redstone-relevant block type in its palette. When none does, compiling the dirty positions
+// of a change at pos yields an empty graph. Palettes can keep types no longer placed, which only makes
+// the answer true more often.
+func (w *World) redstoneNearby(pos cube.Pos) bool {
+	minY, maxY := max(pos[1]-redstoneReach, w.ra[0]), min(pos[1]+redstoneReach, w.ra[1])
+	if minY > maxY {
+		return false
+	}
+	for cx := (pos[0] - redstoneReach) >> 4; cx <= (pos[0]+redstoneReach)>>4; cx++ {
+		for cz := (pos[2] - redstoneReach) >> 4; cz <= (pos[2]+redstoneReach)>>4; cz++ {
+			c, ok := w.chunks[ChunkPos{int32(cx), int32(cz)}]
+			if !ok {
+				continue
+			}
+			sub := c.Sub()
+			for i := c.SubIndex(int16(minY)); i <= c.SubIndex(int16(maxY)); i++ {
+				for _, layer := range sub[i].Layers() {
+					palette := layer.Palette()
+					for j := 0; j < palette.Len(); j++ {
+						if w.redstoneRuntimeID(palette.Value(uint16(j))) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// redstoneRuntimeID reports whether the block with runtime ID rid takes part in redstone.
+func (w *World) redstoneRuntimeID(rid uint32) bool {
+	relevant, ok := w.redstoneRuntimeIDs[rid]
+	if !ok {
+		if w.redstoneRuntimeIDs == nil {
+			w.redstoneRuntimeIDs = make(map[uint32]bool)
+		}
+		relevant = isRedstoneRelevant(w.conf.Blocks.BlockByRuntimeIDOrAir(rid))
+		w.redstoneRuntimeIDs[rid] = relevant
+	}
+	return relevant
+}
+
 // invalidateAroundWith marks pos and its direct neighbours dirty using the same update context.
 func (e *redstoneEngine) invalidateAroundWith(pos cube.Pos, d redstoneDirty, r cube.Range) {
 	if e == nil || pos.OutOfBounds(r) {
