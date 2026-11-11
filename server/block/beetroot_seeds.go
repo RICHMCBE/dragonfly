@@ -67,9 +67,9 @@ func (b BeetrootSeeds) EncodeItem() (name string, meta int16) {
 func (b BeetrootSeeds) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	if tx.Light(pos) < 8 {
 		breakBlock(b, pos, tx)
-	} else if b.Growth < 7 && r.IntN(3) > 0 && r.Float64() <= b.CalculateGrowthChance(pos, tx) {
+	} else if b.Growth < 7 && r.IntN(3) > 0 && b.grows(r.Float64(), pos, tx) {
 		b.Growth++
-		tx.SetBlock(pos, b, &world.SetOpts{NaturalGrowth: true})
+		tx.SetBlock(pos, b, &world.SetOpts{NaturalGrowth: true, DisableBlockUpdates: true})
 	}
 }
 
