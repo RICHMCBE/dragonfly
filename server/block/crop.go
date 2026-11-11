@@ -39,6 +39,17 @@ func (c crop) GrowthStage() int {
 	return c.Growth
 }
 
+// maxGrowthChance is the highest chance CalculateGrowthChance can return: hydrated farmland under the
+// crop (4 points) and under all eight neighbours (8 × 0.75 points), with no halving.
+const maxGrowthChance = 1 / (25.0/10 + 1)
+
+// grows reports whether a random tick with the given roll grows the crop. Rolls above
+// maxGrowthChance can never pass, so the surroundings are only read for the rolls that might;
+// the result is the same as comparing the roll with CalculateGrowthChance directly.
+func (c crop) grows(roll float64, pos cube.Pos, tx *world.Tx) bool {
+	return roll <= maxGrowthChance && roll <= c.CalculateGrowthChance(pos, tx)
+}
+
 // CalculateGrowthChance calculates the chance the crop will grow during a random tick.
 func (c crop) CalculateGrowthChance(pos cube.Pos, tx *world.Tx) float64 {
 	points := 0.0
