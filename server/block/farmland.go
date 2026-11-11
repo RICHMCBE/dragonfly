@@ -66,7 +66,7 @@ func (f Farmland) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 				}
 			} else if hydration != f.Hydration {
 				f.Hydration = max(0, min(7, hydration))
-				tx.SetBlock(pos, f, nil)
+				tx.SetBlock(pos, f, moistureOpts)
 			}
 			return
 		}
@@ -74,18 +74,22 @@ func (f Farmland) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	if !f.hydrated(pos, tx) {
 		if f.Hydration > 0 {
 			f.Hydration--
-			tx.SetBlock(pos, f, nil)
+			tx.SetBlock(pos, f, moistureOpts)
 		} else {
 			blockAbove := tx.Block(pos.Side(cube.FaceUp))
 			if _, cropAbove := blockAbove.(Crop); !cropAbove {
 				tx.SetBlock(pos, Dirt{}, nil)
 			}
 		}
-	} else {
+	} else if f.Hydration != 7 {
 		f.Hydration = 7
-		tx.SetBlock(pos, f, nil)
+		tx.SetBlock(pos, f, moistureOpts)
 	}
 }
+
+// moistureOpts sets farmland that only changed its moisture: the block keeps its shape, so like
+// vanilla its neighbours are not updated (a 100×100 farm otherwise queued six updates per change).
+var moistureOpts = &world.SetOpts{DisableBlockUpdates: true}
 
 // hydrated checks for water within 4 blocks in each direction from the farmland.
 func (f Farmland) hydrated(pos cube.Pos, tx *world.Tx) bool {
