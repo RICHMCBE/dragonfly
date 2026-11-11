@@ -37,7 +37,7 @@ func (p PumpkinSeeds) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 
 // RandomTick ...
 func (p PumpkinSeeds) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
-	if r.Float64() <= p.CalculateGrowthChance(pos, tx) && tx.Light(pos) >= 8 {
+	if p.grows(r.Float64(), pos, tx) && tx.Light(pos) >= 8 {
 		if p.Growth < 7 {
 			p.Growth++
 			tx.SetBlock(pos, p, nil)
