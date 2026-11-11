@@ -88,9 +88,9 @@ func (c Carrot) EncodeItem() (name string, meta int16) {
 func (c Carrot) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	if tx.Light(pos) < 8 {
 		breakBlock(c, pos, tx)
-	} else if c.Growth < 7 && r.Float64() <= c.CalculateGrowthChance(pos, tx) {
+	} else if c.Growth < 7 && c.grows(r.Float64(), pos, tx) {
 		c.Growth++
-		tx.SetBlock(pos, c, &world.SetOpts{NaturalGrowth: true})
+		tx.SetBlock(pos, c, &world.SetOpts{NaturalGrowth: true, DisableBlockUpdates: true})
 	}
 }
 
