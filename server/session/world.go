@@ -34,6 +34,14 @@ type NetworkEncodeableEntity interface {
 	NetworkEncodeEntity() string
 }
 
+// SpawnAttributesEntity is an entity that sends attributes with its spawn packet. A custom entity
+// the client knows only from a resource pack gets default attributes otherwise: one a player rides
+// shows the default mount health as rows of hearts over the hotbar unless it sends a health of 1
+// (a health of 0 reads as dead, and the client does not draw the entity at all).
+type SpawnAttributesEntity interface {
+	SpawnAttributes() []protocol.AttributeValue
+}
+
 // OffsetEntity is a world.EntityType that has an additional offset when sent
 // over network. This is mostly the case for older entities such as players and
 // TNT.
@@ -153,6 +161,10 @@ func (s *Session) ViewEntity(e world.Entity) {
 	if v, ok := e.(interface{ Velocity() mgl64.Vec3 }); ok {
 		vel = v.Velocity()
 	}
+	var attributes []protocol.AttributeValue
+	if v, ok := e.(SpawnAttributesEntity); ok {
+		attributes = v.SpawnAttributes()
+	}
 
 	s.writePacket(&packet.AddActor{
 		EntityUniqueID:  int64(runtimeID),
@@ -165,6 +177,7 @@ func (s *Session) ViewEntity(e world.Entity) {
 		Yaw:             float32(yaw),
 		HeadYaw:         float32(yaw),
 		BodyYaw:         float32(yaw),
+		Attributes:      attributes,
 	})
 }
 
